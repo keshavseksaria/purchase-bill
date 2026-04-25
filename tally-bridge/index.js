@@ -102,33 +102,49 @@ async function fetchFromTally(xml) {
 
 const LEDGER_REQUEST = `<ENVELOPE>
   <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>List of Ledgers</ID>
+    <TALLYREQUEST>ExportData</TALLYREQUEST>
   </HEADER>
   <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-      </STATICVARIABLES>
-    </DESC>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>ODBC Report</REPORTNAME>
+        <STATICVARIABLES>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <COLLECTION NAME="CustomLedgers" ISINITIALIZE="Yes">
+            <TYPE>Ledger</TYPE>
+            <FETCH>Name,Parent</FETCH>
+          </COLLECTION>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </EXPORTDATA>
   </BODY>
 </ENVELOPE>`;
 
 const STOCK_ITEM_REQUEST = `<ENVELOPE>
   <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>List of Stock Items</ID>
+    <TALLYREQUEST>ExportData</TALLYREQUEST>
   </HEADER>
   <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-      </STATICVARIABLES>
-    </DESC>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>ODBC Report</REPORTNAME>
+        <STATICVARIABLES>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <COLLECTION NAME="CustomStockItems" ISINITIALIZE="Yes">
+            <TYPE>StockItem</TYPE>
+            <FETCH>Name,Parent,BaseUnits</FETCH>
+          </COLLECTION>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </EXPORTDATA>
   </BODY>
 </ENVELOPE>`;
 
@@ -156,13 +172,13 @@ async function syncMasterData() {
     try {
         // Fetch ledgers
         const ledgerXml = await fetchFromTally(LEDGER_REQUEST);
-        const ledgers = parseNames(ledgerXml, 'LEDGER');
+        const ledgers = parseNames(ledgerXml, 'OBJECT');
         state.masterData.ledgerCount = ledgers.length;
         addLog('info', `Found ${ledgers.length} ledgers`);
 
         // Fetch stock items
         const stockXml = await fetchFromTally(STOCK_ITEM_REQUEST);
-        const stockItems = parseNames(stockXml, 'STOCKITEM');
+        const stockItems = parseNames(stockXml, 'OBJECT');
         state.masterData.stockItemCount = stockItems.length;
         addLog('info', `Found ${stockItems.length} stock items`);
 
