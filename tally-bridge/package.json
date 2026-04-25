@@ -1,12 +1,12 @@
 {
-  "name": "tally-bridge",
-  "version": "1.0.0",
-  "description": "Syncs approved purchase entries from BillSync cloud to Tally via localhost:9000",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "node-fetch": "^2.7.0"
-  }
+    "name": "tally-bridge",
+    "version": "1.0.0",
+    "description": "Syncs approved purchase entries from BillSync cloud to Tally via localhost:9000",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "dependencies": {
+        "node-fetch": "^2.7.0"
+    }
 }

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tally Bridge Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #09090b;
+      --surface: rgba(255,255,255,0.03);
+      --surface-hover: rgba(255,255,255,0.06);
+      --border: rgba(255,255,255,0.07);
+      --border-hover: rgba(255,255,255,0.12);
+      --text: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #52525b;
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.15);
+      --red: #ef4444;
+      --red-dim: rgba(239,68,68,0.15);
+      --amber: #f59e0b;
+      --amber-dim: rgba(245,158,11,0.15);
+      --blue: #3b82f6;
+      --blue-dim: rgba(59,130,246,0.15);
+      --purple: #8b5cf6;
+      --purple-dim: rgba(139,92,246,0.15);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .bg-glow {
+      position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 400px;
+      background: radial-gradient(ellipse, rgba(139,92,246,0.08) 0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; position: relative; z-index: 1; }
+
+    /* Header */
+    .header { text-align: center; margin-bottom: 2.5rem; }
+    .header h1 {
+      font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #c084fc, #818cf8, #60a5fa);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .header p { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.35rem; }
+
+    /* Status Row */
+    .status-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+
+    .status-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1.1rem 1.25rem; transition: all 0.2s;
+    }
+    .status-card:hover { background: var(--surface-hover); border-color: var(--border-hover); }
+    .status-card .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .status-card .value { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; font-weight: 500; }
+
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .dot.green { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-green 2s infinite; }
+    .dot.red { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+    @keyframes pulse-green {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.5; }
+    }
+
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1.1rem 1.25rem; transition: all 0.2s;
+    }
+    .stat-card:hover { background: var(--surface-hover); border-color: var(--border-hover); transform: translateY(-1px); }
+    .stat-card .stat-icon { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    .stat-card .stat-value { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    .stat-card .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-top: 0.25rem; }
+    .stat-card.green .stat-value { color: var(--green); }
+    .stat-card.red .stat-value { color: var(--red); }
+    .stat-card.blue .stat-value { color: var(--blue); }
+    .stat-card.purple .stat-value { color: var(--purple); }
+
+    /* Actions */
+    .actions { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
+
+    .btn {
+      flex: 1; padding: 0.7rem 1.25rem; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--surface); color: var(--text); font-family: inherit;
+      font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    }
+    .btn:hover { background: var(--surface-hover); border-color: var(--border-hover); transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn.primary {
+      background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(59,130,246,0.2));
+      border-color: rgba(139,92,246,0.3);
+    }
+    .btn.primary:hover { border-color: rgba(139,92,246,0.5); }
+
+    /* Log Section */
+    .log-section {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden;
+    }
+    .log-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--border);
+    }
+    .log-header h2 { font-size: 0.85rem; font-weight: 600; }
+    .log-count {
+      font-size: 0.65rem; background: var(--surface-hover); padding: 0.2rem 0.6rem;
+      border-radius: 20px; color: var(--text-secondary);
+    }
+
+    .log-list { max-height: 400px; overflow-y: auto; }
+    .log-list::-webkit-scrollbar { width: 4px; }
+    .log-list::-webkit-scrollbar-track { background: transparent; }
+    .log-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .log-entry {
+      display: flex; align-items: flex-start; gap: 0.75rem;
+      padding: 0.65rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.02);
+      font-size: 0.8rem; transition: background 0.15s;
+      animation: fadeIn 0.3s ease;
+    }
+    .log-entry:hover { background: rgba(255,255,255,0.02); }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+    .log-entry .log-icon { flex-shrink: 0; width: 20px; text-align: center; font-size: 0.75rem; line-height: 1.4; }
+    .log-entry .log-time { flex-shrink: 0; color: var(--text-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; min-width: 60px; line-height: 1.4; }
+    .log-entry .log-msg { color: var(--text-secondary); line-height: 1.4; }
+    .log-entry.success .log-msg { color: var(--green); }
+    .log-entry.error .log-msg { color: var(--red); }
+    .log-entry.warning .log-msg { color: var(--amber); }
+
+    .empty-log { padding: 3rem; text-align: center; color: var(--text-muted); font-size: 0.8rem; }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+      .status-row { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .actions { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="container">
+    <div class="header">
+      <h1>📄 Tally Bridge</h1>
+      <p>Real-time sync monitor</p>
+    </div>
+
+    <div class="status-row">
+      <div class="status-card">
+        <div class="label">Tally ERP</div>
+        <div class="value"><span class="dot red" id="tallyDot"></span><span id="tallyStatus">Disconnected</span></div>
+      </div>
+      <div class="status-card">
+        <div class="label">Cloud App</div>
+        <div class="value"><span class="dot red" id="cloudDot"></span><span id="cloudStatus">Disconnected</span></div>
+      </div>
+      <div class="status-card">
+        <div class="label">Uptime</div>
+        <div class="value" id="uptime">—</div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card green">
+        <div class="stat-icon">✅</div>
+        <div class="stat-value" id="syncedCount">0</div>
+        <div class="stat-label">Synced</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-icon">❌</div>
+        <div class="stat-value" id="failedCount">0</div>
+        <div class="stat-label">Failed</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon">📒</div>
+        <div class="stat-value" id="ledgerCount">0</div>
+        <div class="stat-label">Ledgers</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="stat-icon">📦</div>
+        <div class="stat-value" id="stockCount">0</div>
+        <div class="stat-label">Stock Items</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="btnSyncMaster" onclick="syncMaster()">🔄 Sync Master Data</button>
+      <button class="btn" id="btnSyncEntries" onclick="syncEntries()">📬 Check Pending Entries</button>
+    </div>
+
+    <div class="log-section">
+      <div class="log-header">
+        <h2>Activity Log</h2>
+        <span class="log-count" id="logCount">0 events</span>
+      </div>
+      <div class="log-list" id="logList">
+        <div class="empty-log">Waiting for activity...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const icons = { info: '🔄', success: '✅', error: '❌', warning: '⚠️' };
+    let lastLogCount = 0;
+
+    function timeAgo(iso) {
+      const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+      if (s < 60) return s + 's ago';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+      return Math.floor(s / 86400) + 'd ago';
+    }
+
+    function formatTime(iso) {
+      return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    }
+
+    function uptime(iso) {
+      const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+      const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60;
+      if (h > 0) return h + 'h ' + m + 'm';
+      if (m > 0) return m + 'm ' + sec + 's';
+      return sec + 's';
+    }
+
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const d = await res.json();
+
+        // Tally status
+        const td = document.getElementById('tallyDot');
+        const ts = document.getElementById('tallyStatus');
+        td.className = 'dot ' + (d.tallyConnected ? 'green' : 'red');
+        ts.textContent = d.tallyConnected ? 'Connected' : 'Disconnected';
+
+        // Cloud status
+        const cd = document.getElementById('cloudDot');
+        const cs = document.getElementById('cloudStatus');
+        cd.className = 'dot ' + (d.cloudConnected ? 'green' : 'red');
+        cs.textContent = d.cloudConnected ? 'Connected' : 'Disconnected';
+
+        // Uptime
+        document.getElementById('uptime').textContent = uptime(d.startedAt);
+
+        // Stats
+        document.getElementById('syncedCount').textContent = d.stats.totalSynced;
+        document.getElementById('failedCount').textContent = d.stats.totalFailed;
+        document.getElementById('ledgerCount').textContent = d.masterData.ledgerCount;
+        document.getElementById('stockCount').textContent = d.masterData.stockItemCount;
+
+        // Logs
+        document.getElementById('logCount').textContent = d.logs.length + ' events';
+        if (d.logs.length !== lastLogCount) {
+          lastLogCount = d.logs.length;
+          const list = document.getElementById('logList');
+          if (d.logs.length === 0) {
+            list.innerHTML = '<div class="empty-log">Waiting for activity...</div>';
+          } else {
+            list.innerHTML = d.logs.map(l =>
+              `<div class="log-entry ${l.type}">
+                <span class="log-icon">${icons[l.type] || '•'}</span>
+                <span class="log-time">${formatTime(l.timestamp)}</span>
+                <span class="log-msg">${l.message}</span>
+              </div>`
+            ).join('');
+          }
+        }
+      } catch (e) {
+        // Bridge offline
+      }
+    }
+
+    async function syncMaster() {
+      const btn = document.getElementById('btnSyncMaster');
+      btn.disabled = true; btn.textContent = '⏳ Syncing...';
+      try { await fetch('/api/sync-master', { method: 'POST' }); }
+      catch (e) {}
+      btn.disabled = false; btn.innerHTML = '🔄 Sync Master Data';
+      fetchStatus();
+    }
+
+    async function syncEntries() {
+      const btn = document.getElementById('btnSyncEntries');
+      btn.disabled = true; btn.textContent = '⏳ Checking...';
+      try { await fetch('/api/sync-entries', { method: 'POST' }); }
+      catch (e) {}
+      btn.disabled = false; btn.innerHTML = '📬 Check Pending Entries';
+      fetchStatus();
+    }
+
+    fetchStatus();
+    setInterval(fetchStatus, 2000);
+  </script>
+</body>
+</html>
