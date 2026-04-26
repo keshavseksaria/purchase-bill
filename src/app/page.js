@@ -430,8 +430,9 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       if (field === 'actual_qty' || field === 'rate' || field === 'discount') {
         const qty = parseFloat(next[idx].actual_qty) || 0;
         const rate = parseFloat(next[idx].rate) || 0;
-        const discount = parseFloat(next[idx].discount) || 0;
-        next[idx].amount = (qty * rate) - discount;
+        const discountPercent = parseFloat(next[idx].discount) || 0;
+        const subtotal = qty * rate;
+        next[idx].amount = subtotal - (subtotal * (discountPercent / 100));
       }
       
       setEntry(e => recalculateTaxes(next, e));
@@ -441,16 +442,17 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
 
   const handleMasterDiscountChange = (val) => {
     setMasterDiscount(val);
-    const discountVal = parseFloat(val) || 0;
+    const discountPercent = parseFloat(val) || 0;
     setItems(prev => {
       const next = prev.map(item => {
         const qty = parseFloat(item.actual_qty) || 0;
         const rate = parseFloat(item.rate) || 0;
-        const updatedDiscount = val === '' ? 0 : discountVal;
+        const subtotal = qty * rate;
+        const currentDiscount = val === '' ? 0 : discountPercent;
         return {
           ...item,
-          discount: updatedDiscount,
-          amount: (qty * rate) - updatedDiscount
+          discount: currentDiscount,
+          amount: subtotal - (subtotal * (currentDiscount / 100))
         };
       });
       setEntry(e => recalculateTaxes(next, e));
@@ -638,7 +640,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
               <div className="form-group" style={{ marginBottom: 0, width: 150 }}>
                 <input
                   className="form-input"
-                  placeholder="Master Discount"
+                  placeholder="Master Disc %"
                   type="number"
                   value={masterDiscount}
                   onChange={e => handleMasterDiscountChange(e.target.value)}
@@ -654,7 +656,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                     <th>Batch</th>
                     <th>Qty</th>
                     <th>Rate</th>
-                    <th>Disc</th>
+                    <th>%</th>
                     <th>Amount</th>
                     <th style={{ width: 36 }}></th>
                   </tr>
