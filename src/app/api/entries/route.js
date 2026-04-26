@@ -3,6 +3,8 @@ import { supabase, isDemoMode } from '@/lib/supabase';
 import { demoStore } from '@/lib/demo-store';
 import { extractBillData } from '@/lib/gemini';
 
+export const maxDuration = 60; // Allow Vercel to run up to 60s for Gemini API
+
 // GET /api/entries?status=pending
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -50,9 +52,9 @@ export async function POST(request) {
     } catch (aiErr) {
       console.error('AI extraction failed, creating empty entry:', aiErr);
       extracted = {
-        date: new Date().toISOString().split('T')[0],
+        date: null,
         supplier_invoice_no: '',
-        supplier_invoice_date: '',
+        supplier_invoice_date: null,
         party_name: '',
         items: [],
         cgst: 0, sgst: 0, igst: 0, round_off: 0, total: 0,
@@ -63,11 +65,11 @@ export async function POST(request) {
     const entryData = {
       id: entryId,
       image_url: imageUrl,
-      date: extracted.date,
-      supplier_invoice_no: extracted.supplier_invoice_no,
-      supplier_invoice_date: extracted.supplier_invoice_date,
-      party_name: extracted.party_name,
-      party_name_raw: extracted.party_name,
+      date: extracted.date || null,
+      supplier_invoice_no: extracted.supplier_invoice_no || null,
+      supplier_invoice_date: extracted.supplier_invoice_date || null,
+      party_name: extracted.party_name || null,
+      party_name_raw: extracted.party_name || null,
       cgst: extracted.cgst || 0,
       sgst: extracted.sgst || 0,
       igst: extracted.igst || 0,

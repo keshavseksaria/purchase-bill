@@ -84,7 +84,16 @@ export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     // Strip markdown code fences if present
-    const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    let jsonStr = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+    
+    // Robust JSON extraction: look for the first '{' and last '}'
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+    }
+
     const parsed = JSON.parse(jsonStr);
     return parsed;
   } catch (error) {
