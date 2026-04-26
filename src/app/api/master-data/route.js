@@ -2,6 +2,29 @@ import { NextResponse } from 'next/server';
 import { supabase, isDemoMode } from '@/lib/supabase';
 import { demoStore } from '@/lib/demo-store';
 
+// Helper to fetch all rows bypassing 1000 row limit
+async function fetchAllRows(tableName) {
+  let allData = [];
+  let start = 0;
+  const limit = 1000;
+  
+  while (true) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .order('name')
+      .range(start, start + limit - 1);
+      
+    if (error) throw error;
+    allData = allData.concat(data);
+    
+    if (data.length < limit) break;
+    start += limit;
+  }
+  
+  return allData;
+}
+
 // GET /api/master-data
 export async function GET() {
   try {
@@ -12,8 +35,8 @@ export async function GET() {
       });
     }
 
-    const { data: ledgers } = await supabase.from('ledgers').select('*').order('name');
-    const { data: stockItems } = await supabase.from('stock_items').select('*').order('name');
+    const ledgers = await fetchAllRows('ledgers');
+    const stockItems = await fetchAllRows('stock_items');
 
     return NextResponse.json({
       ledgers: ledgers || [],
