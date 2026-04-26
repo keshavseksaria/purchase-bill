@@ -50,12 +50,12 @@ export async function POST(request) {
     try {
       extracted = await extractBillData(base64, mimeType);
     } catch (aiErr) {
-      console.error('AI extraction failed, creating empty entry:', aiErr);
+      console.error('AI extraction failed:', aiErr);
       extracted = {
         date: null,
-        supplier_invoice_no: '',
+        supplier_invoice_no: 'EXTRACTION_FAILED',
         supplier_invoice_date: null,
-        party_name: '',
+        party_name: `Error: ${aiErr.message}`, // Pass error to UI for debugging
         items: [],
         cgst: 0, sgst: 0, igst: 0, round_off: 0, total: 0,
       };

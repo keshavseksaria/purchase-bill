@@ -71,6 +71,12 @@ export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
             temperature: 0.1,
             maxOutputTokens: 4096,
           },
+          safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+          ],
         }),
       }
     );
@@ -94,8 +100,17 @@ export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
       jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
     }
 
-    const parsed = JSON.parse(jsonStr);
-    return parsed;
+    if (jsonStr === '') {
+      throw new Error('Gemini returned an empty response (possibly blocked by safety filters).');
+    }
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return parsed;
+    } catch (parseErr) {
+      console.error('JSON Parse Error. Raw text:', text);
+      throw new Error(`AI generated invalid JSON. Raw: ${text.substring(0, 100)}...`);
+    }
   } catch (error) {
     console.error('Gemini extraction failed:', error);
     throw error;
