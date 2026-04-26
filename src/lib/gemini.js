@@ -10,26 +10,24 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
     return getMockData();
   }
 
-  const EXTRACTION_PROMPT = `You are an expert at reading Indian purchase bills/invoices, including messy handwritten notes and printed text.
-
-Analyze this purchase bill image and extract the following information as JSON:
+  const EXTRACTION_PROMPT = `Analyze this purchase bill image and extract as JSON:
 
 {
-  "date": "YYYY-MM-DD format, the purchase/bill date",
-  "supplier_invoice_no": "the invoice/bill number",
-  "supplier_invoice_date": "YYYY-MM-DD format",
-  "party_name": "Mapped vendor name from the provided VALID_LEDGERS list (MUST be an EXACT string match from the list)",
-  "party_name_raw": "Original vendor name as printed on the bill",
+  "date": "YYYY-MM-DD",
+  "supplier_invoice_no": "string",
+  "supplier_invoice_date": "YYYY-MM-DD",
+  "party_name": "Mapped vendor from VALID_LEDGERS (EXACT match)",
+  "party_name_raw": "Original vendor on bill",
   "items": [
     {
-      "bill_item_name": "Printed item name on the bill",
-      "handwritten_name_raw": "The raw handwritten text found near this item (look above the line, in the margins, or in front of the printed name)",
-      "name_of_item": "Mapped item name from the provided VALID_STOCK_ITEMS list (MUST be an EXACT string match from the list)",
-      "batch_no": "8-digit batch number in MMSSYYDD format",
-      "actual_qty": number,
-      "billed_qty": number,
+      "bill_item_name": "Printed item name",
+      "handwritten_name_raw": "Handwritten text ABOVE or NEAR the item",
+      "name_of_item": "Mapped from VALID_STOCK_ITEMS (EXACT match). Priority to handwritten name.",
+      "serials": ["List of handwritten serial numbers for this line, e.g. ['01', '02', '03'] or ['91', '92']"],
+      "actual_qty_per_piece": number,
+      "billed_qty_per_piece": number,
       "rate": number,
-      "amount": number
+      "amount_total": number
     }
   ],
   "cgst": number,
@@ -39,30 +37,19 @@ Analyze this purchase bill image and extract the following information as JSON:
   "total": number
 }
 
-VALID_LEDGERS:
-${masterData.ledgers.map(l => l.name).join(', ')}
+VALID_LEDGERS: ${masterData.ledgers.map(l => l.name).join(', ')}
+VALID_STOCK_ITEMS: ${masterData.stockItems.map(s => s.name).join(', ')}
 
-VALID_STOCK_ITEMS:
-${masterData.stockItems.map(s => s.name).join(', ')}
-
-Critical Mapping Rules:
-1. Vendor Mapping: Identify the SELLER (at the top). Map it to the closest name in VALID_LEDGERS. Do NOT use the buyer name.
-2. Handwritten Item Priority: The printed item names on the bill are often generic. Look for HANDWRITTEN text near each item. This handwritten text is the REAL item name.
-3. Strict Stock Mapping: Map the handwritten text to the MOST SIMILAR name in the VALID_STOCK_ITEMS list. 
-   - Example: If you see handwritten "shkr", map it to "Shkr" from the list.
-   - Example: If you see "PR", look for an item in the list that matches "PR" or similar.
-   - Do NOT return a name that is not in the VALID_STOCK_ITEMS list for "name_of_item".
-4. Batch Number (MMSSYYDD): 
-   - MM = Month (e.g., 04 for April)
-   - SS = Serial Number (Handwritten in front of the item, usually 2 digits like 01, 02)
-   - YY = Year (e.g., 24 for 2024)
-   - DD = Date (The day part of the bill date)
-5. Item Unrolling: If a single bill line represents multiple pieces (e.g., "5 pcs" with a serial range "01-05"), create 5 separate entries in the "items" array.
-6. Return ONLY valid JSON. No markdown formatting.`;
+Rules:
+1. Vendor: Identify SELLER. Map to VALID_LEDGERS.
+2. Items: Search for HANDWRITTEN names (above/near) and map to VALID_STOCK_ITEMS.
+3. Serials: Look for handwritten numbers in front of items (like '01-05' or '91-95'). List each serial in the "serials" array.
+4. Quantities: Provide qty PER PIECE (e.g. if 5 pcs total 120mtrs, billed_qty_per_piece is 24).
+5. Return ONLY valid JSON.`;
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -104,23 +91,43 @@ Critical Mapping Rules:
     if (!text) throw new Error('Gemini returned an empty response.');
 
     try {
-      // JSON mode should return pure JSON, but we clean just in case
       let cleaned = text.trim();
       if (cleaned.startsWith('```')) {
         cleaned = cleaned.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
       }
-      return JSON.parse(cleaned);
-    } catch (parseErr) {
-      console.error('JSON Parse Error. Raw Text:', text);
-      // Fallback: try to find any { } block
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        try {
-          return JSON.parse(match[0]);
-        } catch (innerErr) {
-          throw new Error(`AI generated invalid JSON: ${parseErr.message}`);
+      const data = JSON.parse(cleaned);
+
+      // --- UNROLL ITEMS ---
+      const unrolledItems = [];
+      const billDate = data.date || data.supplier_invoice_date || '';
+      const day = billDate ? billDate.split('-')[2] : '';
+      const yearShort = billDate ? billDate.split('-')[0].slice(-2) : '';
+      const month = billDate ? billDate.split('-')[1] : '';
+
+      if (data.items && Array.isArray(data.items)) {
+        for (const item of data.items) {
+          const serials = (item.serials && item.serials.length > 0) ? item.serials : ['01'];
+          for (const sn of serials) {
+            unrolledItems.push({
+              bill_item_name: item.bill_item_name,
+              handwritten_name_raw: item.handwritten_name_raw,
+              name_of_item: item.name_of_item,
+              batch_no: `${month}${sn.padStart(2, '0')}${yearShort}${day}`,
+              actual_qty: item.actual_qty_per_piece || 1,
+              billed_qty: item.billed_qty_per_piece || 1,
+              rate: item.rate,
+              amount: (item.billed_qty_per_piece || 1) * item.rate
+            });
+          }
         }
       }
+
+      return {
+        ...data,
+        items: unrolledItems
+      };
+    } catch (parseErr) {
+      console.error('JSON Parse Error. Raw Text:', text);
       throw new Error(`AI generated invalid JSON: ${parseErr.message}`);
     }
   } catch (error) {
