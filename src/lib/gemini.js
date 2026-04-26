@@ -46,11 +46,17 @@ function findBestMatch(rawName, list) {
     const itemName = item.name.toLowerCase().trim();
     if (itemName === target) return item.name;
     
-    // Substring match: only valid if it's a significant portion
-    if (itemName.includes(target) && target.length >= itemName.length * 0.5) {
+    // Substring match: If the raw text STARTS with our item name, it's likely a match 
+    // even if there's a batch number after it (e.g., "SHKR 12012519" starts with "SHKR")
+    if (target.startsWith(itemName) || itemName.startsWith(target)) {
       return item.name;
     }
-    if (target.includes(itemName) && itemName.length >= target.length * 0.5) {
+    
+    // Fallback substring check
+    if (itemName.includes(target) && target.length >= itemName.length * 0.4) {
+      return item.name;
+    }
+    if (target.includes(itemName) && itemName.length >= target.length * 0.4) {
       return item.name;
     }
 
@@ -101,7 +107,7 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
 
 Extraction Rules:
 1. Seller: Extract the main seller name at the top.
-2. Items & Inheritance: The buyer often writes the general item name (e.g. 'SHKR') ONCE at the top of the bill/table, sometimes next to a batch number. If you see this, apply that name (e.g. 'SHKR') to ALL items. If not at the top, look next to each item and inherit down.
+2. Items & Inheritance: The buyer often writes the general item name (e.g. 'SHKR') ONCE at the top of the bill/table, sometimes next to a batch number (e.g. 'SHKR 12012519'). If you see this, extract ONLY the word (e.g. 'SHKR') for buyer_item_name_raw and apply it to ALL items. 
 3. Date: Indian format is DD/MM/YYYY.
 4. Serials & Context: Handwritten '0' often looks like '9'. If you see a sequence like '91, 92, 93' followed by '04, 05, 06', use SMART LOGIC to correct it to '01, 02, 03'. Serial numbers almost always start from '01'. Expand ranges into full arrays (e.g., "01-05" -> ["01", "02", "03", "04", "05"]).
 5. No Item Unrolling: Return only ONE JSON object per line.
