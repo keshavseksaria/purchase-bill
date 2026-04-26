@@ -44,18 +44,14 @@ function findBestMatch(rawName, list) {
 
   for (const item of list) {
     const itemName = item.name.toLowerCase().trim();
-    // Exact match optimization
     if (itemName === target) return item.name;
     
-    // Substring match optimization (e.g. if target is "shkr" and list has "shkr (new)")
-    if (itemName.includes(target) || target.includes(itemName)) {
-      // Prioritize substring matches by giving them a pseudo-distance based on length difference
-      const dist = Math.abs(itemName.length - target.length) * 0.1; 
-      if (dist < bestDistance) {
-        bestDistance = dist;
-        bestMatch = item.name;
-      }
-      continue;
+    // Substring match: only valid if it's a significant portion
+    if (itemName.includes(target) && target.length >= itemName.length * 0.5) {
+      return item.name;
+    }
+    if (target.includes(itemName) && itemName.length >= target.length * 0.5) {
+      return item.name;
     }
 
     const distance = getLevenshteinDistance(target, itemName);
@@ -65,8 +61,9 @@ function findBestMatch(rawName, list) {
     }
   }
 
-  // Only return if it's a reasonable match (e.g., less than 60% of the length changed)
-  if (bestDistance <= Math.max(3, target.length * 0.6)) {
+  // Threshold: Max 30% difference (was 60%)
+  const threshold = Math.max(3, target.length * 0.3);
+  if (bestDistance <= threshold) {
     return bestMatch;
   }
   return null;
@@ -88,8 +85,8 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   "items": [
     {
       "seller_item_name": "Item name as written by seller (could be printed or handwritten)",
-      "buyer_item_name_raw": "The item name added by the buyer (e.g. 'shkr', 'smkr'). Look ABOVE the item, IN FRONT of the item, or at the TOP of the table. If a row has no handwritten name, INHERIT the name from the row above it.",
-      "serials": ["List of handwritten serials for this line, e.g. ['01', '02', '03'] or ['91']"],
+      "buyer_item_name_raw": "The handwritten item name added by the buyer. Look closely at the VERY TOP of the table (it might be written as 'SHKR 12012519'). If it's at the top, apply it to EVERY item. Otherwise, look ABOVE or IN FRONT of the item. INHERIT from the row above if missing.",
+      "serials": ["List of handwritten serials for this line, e.g. ['01', '02', '03']"],
       "total_qty": number,
       "rate": number,
       "amount_total": number
@@ -104,10 +101,10 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
 
 Extraction Rules:
 1. Seller: Extract the main seller name at the top.
-2. Items & Inheritance: Buyers often write the item name (e.g. 'shkr') above the first item, and it applies to subsequent items. If a row is missing a handwritten name, carry forward the handwritten name from the row above it.
-3. Date: Indian format is DD/MM/YYYY. Ensure you don't swap day and year.
-4. Serials: Look for handwritten numbers in front of items (like '01-05'). Expand ranges into a full array (e.g., ["01", "02", "03", "04", "05"]).
-5. No Item Unrolling: Return only ONE JSON object per line. We will do the math later.
+2. Items & Inheritance: The buyer often writes the general item name (e.g. 'SHKR') ONCE at the top of the bill/table, sometimes next to a batch number. If you see this, apply that name (e.g. 'SHKR') to ALL items. If not at the top, look next to each item and inherit down.
+3. Date: Indian format is DD/MM/YYYY.
+4. Serials & Context: Handwritten '0' often looks like '9'. If you see a sequence like '91, 92, 93' followed by '04, 05, 06', use SMART LOGIC to correct it to '01, 02, 03'. Serial numbers almost always start from '01'. Expand ranges into full arrays (e.g., "01-05" -> ["01", "02", "03", "04", "05"]).
+5. No Item Unrolling: Return only ONE JSON object per line.
 6. Return ONLY valid JSON.`;
 
   try {
