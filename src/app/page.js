@@ -154,7 +154,8 @@ function UploadPage({ addToast, onDone }) {
   const [previews, setPreviews] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef();
+  const galleryRef = useRef();
+  const cameraRef = useRef();
 
   const handleFiles = (newFiles) => {
     const imageFiles = Array.from(newFiles).filter(f => f.type.startsWith('image/'));
@@ -206,23 +207,39 @@ function UploadPage({ addToast, onDone }) {
   return (
     <div className="upload-container">
       <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Upload Purchase Bills</h1>
-      <p style={{ color: 'var(--text-secondary)' }}>Take a photo or select from gallery. You can upload multiple bills.</p>
+      <p style={{ color: 'var(--text-secondary)' }}>Choose how you want to add your bills.</p>
+
+      <div style={{ display: 'flex', gap: 16, marginBottom: 30 }}>
+        <button className="btn btn-primary" style={{ flex: 1, padding: '20px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }} onClick={() => cameraRef.current?.click()}>
+          <span style={{ fontSize: '2rem' }}>📷</span>
+          <span>Take Photo</span>
+        </button>
+        <button className="btn btn-secondary" style={{ flex: 1, padding: '20px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }} onClick={() => galleryRef.current?.click()}>
+          <span style={{ fontSize: '2rem' }}>🖼️</span>
+          <span>From Gallery</span>
+        </button>
+      </div>
 
       <div
         className={`upload-zone ${dragOver ? 'drag-over' : ''}`}
-        onClick={() => inputRef.current?.click()}
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
       >
-        <span className="upload-icon">📷</span>
-        <h3>Tap to capture or select bills</h3>
-        <p>Drag & drop images here, or tap to browse</p>
+        <p>Drag & drop images here</p>
         <input
-          ref={inputRef}
+          ref={galleryRef}
           type="file"
           accept="image/*"
           multiple
+          onChange={e => handleFiles(e.target.files)}
+          style={{ display: 'none' }}
+        />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
           onChange={e => handleFiles(e.target.files)}
           style={{ display: 'none' }}
         />
@@ -242,6 +259,7 @@ function UploadPage({ addToast, onDone }) {
             className="btn btn-primary btn-lg"
             onClick={uploadAll}
             disabled={uploading}
+            style={{ width: '100%' }}
           >
             {uploading ? (
               <><span className="spinner" /> Processing...</>
@@ -396,9 +414,18 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
 
   const recalculateTaxes = (currentItems, currentEntry) => {
     const itemsTotal = currentItems.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
-    const cgst = Number((itemsTotal * 0.025).toFixed(2));
-    const sgst = Number((itemsTotal * 0.025).toFixed(2));
-    const igst = Number((itemsTotal * 0.05).toFixed(2));
+    
+    let cgst = parseFloat(currentEntry.cgst) || 0;
+    let sgst = parseFloat(currentEntry.sgst) || 0;
+    let igst = parseFloat(currentEntry.igst) || 0;
+
+    // Only update GST if it was already present on the bill (or manually entered)
+    if (igst > 0) {
+      igst = Number((itemsTotal * 0.05).toFixed(2));
+    } else if (cgst > 0 || sgst > 0) {
+      cgst = Number((itemsTotal * 0.025).toFixed(2));
+      sgst = Number((itemsTotal * 0.025).toFixed(2));
+    }
     
     const subtotal = itemsTotal + cgst + sgst + igst;
     const rounded = Math.round(subtotal);
@@ -417,6 +444,16 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
   const updateField = (field, value) => {
     setEntry(prev => {
       const next = { ...prev, [field]: value };
+      // If manually changing tax or roundoff, we need to update the total
+      if (field === 'cgst' || field === 'sgst' || field === 'igst' || field === 'round_off') {
+        const itemsTotal = items.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
+        const subtotal = itemsTotal + 
+          (parseFloat(field === 'cgst' ? value : next.cgst) || 0) +
+          (parseFloat(field === 'sgst' ? value : next.sgst) || 0) +
+          (parseFloat(field === 'igst' ? value : next.igst) || 0);
+        const round = parseFloat(field === 'round_off' ? value : next.round_off) || 0;
+        next.total = Number((subtotal + round).toFixed(2));
+      }
       return next;
     });
   };
@@ -485,12 +522,11 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
 
   const save = async () => {
     setSaving(true);
-    const finalEntry = recalculateTaxes(items, entry);
     try {
       const res = await fetch(`/api/entries/${entryId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entry: finalEntry, items }),
+        body: JSON.stringify({ entry, items }),
       });
       if (!res.ok) throw new Error('Save failed');
       const data = await res.json();
@@ -535,8 +571,6 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       </div>
     );
   }
-
-  const itemsTotal = items.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
 
   return (
     <>
