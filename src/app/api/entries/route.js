@@ -25,6 +25,28 @@ export async function GET(request) {
   }
 }
 
+// Helper to fetch all rows bypassing 1000 row limit
+async function fetchAllRows(tableName) {
+  let allData = [];
+  let start = 0;
+  const limit = 1000;
+  
+  while (true) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('name')
+      .range(start, start + limit - 1);
+      
+    if (error) throw error;
+    allData = allData.concat(data);
+    
+    if (data.length < limit) break;
+    start += limit;
+  }
+  
+  return allData;
+}
+
 // POST /api/entries — upload a new bill
 export async function POST(request) {
   try {
@@ -45,14 +67,13 @@ export async function POST(request) {
     let imageUrl = `data:${mimeType};base64,${base64}`;
     const entryId = crypto.randomUUID();
 
-    // Fetch master data for Gemini mapping
-    const [ledgersRes, stockItemsRes] = await Promise.all([
-      supabase.from('ledgers').select('name'),
-      supabase.from('stock_items').select('name'),
-    ]);
+    // Fetch master data for Gemini mapping (using pagination to get ALL rows)
+    const ledgersData = await fetchAllRows('ledgers');
+    const stockItemsData = await fetchAllRows('stock_items');
+    
     const masterData = {
-      ledgers: ledgersRes.data || [],
-      stockItems: stockItemsRes.data || [],
+      ledgers: ledgersData || [],
+      stockItems: stockItemsData || [],
     };
 
     // Extract data from bill using Gemini (passing master data for auto-mapping)
