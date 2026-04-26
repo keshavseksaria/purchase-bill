@@ -62,7 +62,7 @@ Critical Mapping Rules:
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -101,22 +101,27 @@ Critical Mapping Rules:
     const result = await response.json();
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    let jsonStr = text.trim();
-    // Clean markdown if present (though response_mime_type should prevent it)
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-    }
-    
-    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (jsonMatch) jsonStr = jsonMatch[0];
-
-    if (jsonStr === '') throw new Error('Gemini returned an empty response.');
+    if (!text) throw new Error('Gemini returned an empty response.');
 
     try {
-      return JSON.parse(jsonStr);
+      // JSON mode should return pure JSON, but we clean just in case
+      let cleaned = text.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      }
+      return JSON.parse(cleaned);
     } catch (parseErr) {
       console.error('JSON Parse Error. Raw Text:', text);
-      throw new Error(`AI generated invalid JSON. ${parseErr.message}`);
+      // Fallback: try to find any { } block
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          return JSON.parse(match[0]);
+        } catch (innerErr) {
+          throw new Error(`AI generated invalid JSON: ${parseErr.message}`);
+        }
+      }
+      throw new Error(`AI generated invalid JSON: ${parseErr.message}`);
     }
   } catch (error) {
     console.error('Gemini extraction failed:', error);
