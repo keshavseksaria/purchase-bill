@@ -641,7 +641,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                         )}
                         {item.bill_item_name && item.bill_item_name !== item.name_of_item && (
                           <div className="bill-name" title={item.bill_item_name}>
-                            Bill: {item.bill_item_name}
+                            AI read: {item.bill_item_name}
                           </div>
                         )}
                       </td>

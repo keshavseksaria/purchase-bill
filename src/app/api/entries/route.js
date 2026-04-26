@@ -113,7 +113,7 @@ export async function POST(request) {
     const items = (extracted.items || []).map((item, idx) => ({
       id: crypto.randomUUID(),
       entry_id: entryId,
-      bill_item_name: item.bill_item_name || '',
+      bill_item_name: item.handwritten_name_raw || item.bill_item_name || '', // Use figured name as primary display
       name_of_item: item.name_of_item || '',
       batch_no: item.batch_no || '',
       actual_qty: item.actual_qty || 0,
