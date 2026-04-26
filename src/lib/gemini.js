@@ -42,24 +42,26 @@ function findBestMatch(rawName, list) {
   let bestMatch = null;
   let bestDistance = Infinity;
 
+  // 1. First Pass: Look for EXACT matches
+  for (const item of list) {
+    if (item.name.toLowerCase().trim() === target) return item.name;
+  }
+
+  // 2. Second Pass: Look for best substring or distance
   for (const item of list) {
     const itemName = item.name.toLowerCase().trim();
-    if (itemName === target) return item.name;
     
-    // Substring match: If the raw text STARTS with our item name, it's likely a match 
-    // even if there's a batch number after it (e.g., "SHKR 12012519" starts with "SHKR")
-    if (target.startsWith(itemName) || itemName.startsWith(target)) {
-      return item.name;
-    }
-    
-    // Fallback substring check
-    if (itemName.includes(target) && target.length >= itemName.length * 0.4) {
-      return item.name;
-    }
+    // Substring match: only prioritize if it's a very strong match
+    // (e.g. "shkr 12012519" contains "shkr")
     if (target.includes(itemName) && itemName.length >= target.length * 0.4) {
-      return item.name;
+      // Don't return immediately; see if there's a closer one
+      const dist = Math.abs(target.length - itemName.length) * 0.1;
+      if (dist < bestDistance) {
+        bestDistance = dist;
+        bestMatch = item.name;
+      }
     }
-
+    
     const distance = getLevenshteinDistance(target, itemName);
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -67,7 +69,7 @@ function findBestMatch(rawName, list) {
     }
   }
 
-  // Threshold: Max 30% difference (was 60%)
+  // Threshold: Max 30% difference
   const threshold = Math.max(3, target.length * 0.3);
   if (bestDistance <= threshold) {
     return bestMatch;
