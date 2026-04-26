@@ -4,7 +4,13 @@
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-const EXTRACTION_PROMPT = `You are an expert at reading Indian purchase bills/invoices, including handwritten and printed text.
+export async function extractBillData(imageBase64, masterData = { ledgers: [], stockItems: [] }, mimeType = 'image/jpeg') {
+  if (!GEMINI_API_KEY) {
+    console.warn('Gemini API key not set — returning mock data');
+    return getMockData();
+  }
+
+  const EXTRACTION_PROMPT = `You are an expert at reading Indian purchase bills/invoices, including handwritten and printed text.
 
 Analyze this purchase bill image and extract the following information as JSON:
 
@@ -12,43 +18,38 @@ Analyze this purchase bill image and extract the following information as JSON:
   "date": "YYYY-MM-DD format, the purchase/bill date",
   "supplier_invoice_no": "the invoice/bill number",
   "supplier_invoice_date": "YYYY-MM-DD format",
-  "party_name": "vendor/supplier name exactly as printed",
+  "party_name": "Mapped vendor name from the provided VALID_LEDGERS list",
+  "party_name_raw": "Original vendor name as printed on the bill",
   "items": [
     {
-      "bill_item_name": "item name exactly as printed on bill",
-      "batch_no": "8-digit batch number in MMSSYYDD format if visible, or raw batch info",
+      "bill_item_name": "Original item name as printed or handwritten on bill",
+      "name_of_item": "Mapped item name from the provided VALID_STOCK_ITEMS list",
+      "batch_no": "8-digit batch number in MMSSYYDD format",
       "actual_qty": number,
       "billed_qty": number,
-      "rate": number (price per unit),
-      "amount": number (total for this item = qty * rate)
+      "rate": number,
+      "amount": number
     }
   ],
-  "cgst": number (total CGST amount, 0 if not shown),
-  "sgst": number (total SGST amount, 0 if not shown),
-  "igst": number (total IGST amount, 0 if not shown),
-  "round_off": number (round off amount, can be negative, 0 if not shown),
-  "total": number (grand total / net payable amount)
+  "cgst": number,
+  "sgst": number,
+  "igst": number,
+  "round_off": number,
+  "total": number
 }
 
-Important rules:
-1. Party Name: Extract the *Seller's name* (the entity issuing the bill at the top). STRICTLY IGNORE the buyer's name (which is "SEKSARIA VASTRA BHANDAR" or variations).
-2. Item Name: Ignore the printed item names. Look ONLY for HANDWRITTEN item names (e.g., "shkr") written above or next to items. A handwritten item name applies to all subsequent items below it until a new handwritten name appears.
-3. Batch Number (MMSSYYDD): An 8-digit batch number will always be handwritten at the top of the items. The formula is MM (Month of invoice), SS (Serial number), YY (Last 2 digits of year), DD (Day of invoice). A serial number range (e.g., 01-05) or full batch number will be handwritten in front of each item. If the handwriting is unclear, cross-check it using the MMSSYYDD formula based on the invoice date.
-4. Item Unrolling (Crucial): If a printed line contains a piece count (e.g., 5 pcs), a total meter count (e.g., 120 mtrs), AND a handwritten serial range (e.g., "01-05" or "11-12"), you MUST unroll this single line into multiple separate JSON entries (one for each piece).
-   - Example unrolling: "5 pcs, 120 mtrs, range 01-05" becomes 5 entries.
-   - For each unrolled entry: The quantity (actual_qty and billed_qty) is total meters / pieces (e.g., 120 / 5 = 24).
-   - The amount is the unrolled quantity * rate (e.g., 24 * 118).
-   - The batch number for each unrolled entry uses the incrementing serial number from the range (01, 02, 03, 04, 05).
-   - If an item has only one unit (e.g., 5 pcs, no meters) and NO serial range, keep it as a single entry.
-5. Quantities and Rates: Should be numbers only (no units or currency symbols). All amounts must be positive numbers.
-6. If you can't read a field clearly, use your best guess and note low confidence. 
-7. Ensure the JSON is complete and NOT truncated. Return ONLY valid JSON, no markdown, no explanation.`;
+VALID_LEDGERS:
+${masterData.ledgers.map(l => l.name).join(', ')}
 
-export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
-  if (!GEMINI_API_KEY) {
-    console.warn('Gemini API key not set — returning mock data');
-    return getMockData();
-  }
+VALID_STOCK_ITEMS:
+${masterData.stockItems.map(s => s.name).join(', ')}
+
+Important rules:
+1. Party Name: Identify the Seller (at the top) and map it to the closest matching name in VALID_LEDGERS. Strictly ignore the buyer "SEKSARIA VASTRA BHANDAR".
+2. Item Name: Ignore printed names. Look for HANDWRITTEN names above items. Map the handwritten name to the closest match in VALID_STOCK_ITEMS.
+3. Batch Number (MMSSYYDD): Formula is Month(MM), Serial(SS), Year(YY), Date(DD). Serial is handwritten in front of items.
+4. Item Unrolling: If a line has "pcs" (e.g. 5) and "mtrs" (e.g. 120) and a serial range (e.g. 01-05), split it into separate entries (e.g. 5 entries of 24 mtrs each).
+5. Ensure the JSON is complete and valid. Return ONLY valid JSON.`;
 
   try {
     const response = await fetch(
@@ -90,27 +91,15 @@ export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
     const result = await response.json();
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    // Strip markdown code fences and extract JSON using regex
     let jsonStr = text.trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[0];
-    }
+    if (jsonMatch) jsonStr = jsonMatch[0];
 
-    if (jsonStr === '' || jsonStr === text.trim()) {
-       // If no braces found or regex didn't change anything, try stripping fences as fallback
-       jsonStr = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
-    }
-
-    if (jsonStr === '') {
-      throw new Error('Gemini returned an empty response (possibly blocked by safety filters).');
-    }
+    if (jsonStr === '') throw new Error('Gemini returned an empty response.');
 
     try {
-      const parsed = JSON.parse(jsonStr);
-      return parsed;
+      return JSON.parse(jsonStr);
     } catch (parseErr) {
-      console.error('JSON Parse Error. Raw text:', text);
       throw new Error(`AI generated invalid JSON. Raw: ${text.substring(0, 100)}...`);
     }
   } catch (error) {
@@ -125,28 +114,7 @@ function getMockData() {
     supplier_invoice_no: 'DEMO-001',
     supplier_invoice_date: new Date().toISOString().split('T')[0],
     party_name: 'Demo Supplier',
-    items: [
-      {
-        bill_item_name: 'Sample Item 1',
-        batch_no: '04012624',
-        actual_qty: 12,
-        billed_qty: 12,
-        rate: 150,
-        amount: 1800,
-      },
-      {
-        bill_item_name: 'Sample Item 2',
-        batch_no: '04022624',
-        actual_qty: 6,
-        billed_qty: 6,
-        rate: 200,
-        amount: 1200,
-      },
-    ],
-    cgst: 75,
-    sgst: 75,
-    igst: 0,
-    round_off: 0,
-    total: 3150,
+    items: [],
+    total: 0,
   };
 }
