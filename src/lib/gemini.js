@@ -87,13 +87,13 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   "date": "YYYY-MM-DD",
   "supplier_invoice_no": "string",
   "supplier_invoice_date": "YYYY-MM-DD",
-  "party_name_raw": "Extract the SELLER name (e.g., 'SALERAJ CORPORATION').",
+  "party_name_raw": "Extract the SELLER name from the invoice header.",
   "items": [
     {
-      "seller_item_name": "The printed item name (e.g., 'ARISTOCRAT-174')",
-      "buyer_item_name_raw": "The INTERNAL code (e.g., 'SHKR' or 'SMKR'). This is ALWAYS handwritten. It is often found near 'L.R. NO.' or at the top of the table. Apply to all items if found once.",
-      "serials": ["List of handwritten serials (e.g., '01', '02', '03') from the Design column"],
-      "total_qty": "Total meters/kgs for this row.",
+      "seller_item_name": "The original item description printed on the bill.",
+      "buyer_item_name_raw": "The internal item code or category added BY HAND by the buyer. These are ALWAYS handwritten. They may appear anywhere on the document: in the margins, the header, the footer, or directly next to or above item rows. If a handwritten note applies to a group of items, apply it to all of them.",
+      "serials": ["List of handwritten serial numbers or design markers for this item."],
+      "total_qty": "The primary billing quantity (e.g., total meters, kgs, or units).",
       "rate": number,
       "amount_total": number
     }
@@ -104,11 +104,11 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
 }
 
 Extraction Rules:
-1. Internal Item Code: The buyer writes a short code (like 'SHKR' or 'SMKR') BY HAND. It is usually near the top left of the table or header. IGNORE printed column headers like 'MILLS' or 'QUALITY' for this field.
-2. Serial Expansion: Expand handwritten ranges like '01-05' into individual strings ['01', '02', '03', '04', '05'].
-3. Inheritance: If the internal code is only written once at the top, apply it to every row in the bill.
-4. Date: strictly DD/MM/YYYY on the bill.
-5. JSON only.`;
+1. Handwritten Internal Codes: Differentiate between the seller's printed descriptions and the buyer's handwritten annotations. The handwritten text represents the buyer's internal item name or code. Extract these accurately regardless of where they are written on the page.
+2. Quantity Extraction: Identify the total quantity used for the final line amount. Ignore secondary packaging counts (like piece counts) if a primary unit (like meters) is present.
+3. Serial Expansion: If serial numbers or design markers are written as a range (e.g., 01-10), expand them into a full array of individual strings.
+4. Document Intelligence: Use the overall context of the bill to link handwritten notes to the correct items.
+5. Return ONLY valid JSON.`;
 
   try {
     const response = await fetch(
