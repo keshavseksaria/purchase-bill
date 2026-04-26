@@ -93,9 +93,9 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   "items": [
     {
       "seller_item_name": "Item name as written by seller (could be printed or handwritten)",
-      "buyer_item_name_raw": "The handwritten item name added by the buyer. Look closely at the VERY TOP of the table (it might be written as 'SHKR 12012519'). If it's at the top, apply it to EVERY item. Otherwise, look ABOVE or IN FRONT of the item. INHERIT from the row above if missing.",
-      "serials": ["List of handwritten serials for this line, e.g. ['01', '02', '03']"],
-      "total_qty": "The TOTAL quantity of the line (e.g., if it says '5 Pcs 120.00 Mtr', the total_qty is 120.00. Always pick the larger number representing the total unit of measure).",
+      "buyer_item_name_raw": "The handwritten item name or category added by the buyer. Look for handwritten text at the top of the table or near the item rows. If a row is blank, inherit the handwritten name from the preceding row or the header.",
+      "serials": ["Array of individual serial numbers extracted from handwritten notes (e.g., expand ranges like '01-05' into ['01', '02', '03', '04', '05'])"],
+      "total_qty": "The primary quantity used for billing (e.g., total meters, total weight). If multiple numbers exist (like piece count vs total weight), extract the one that represents the base unit of the rate/amount.",
       "rate": number,
       "amount_total": number
     }
@@ -108,13 +108,13 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
 }
 
 Extraction Rules:
-1. Seller: Extract the main seller name at the top.
-2. Items & Inheritance: The buyer often writes the general item name (e.g. 'SHKR') ONCE at the top of the bill/table, sometimes next to a batch number (e.g. 'SHKR 12012519'). If you see this, extract ONLY the word (e.g. 'SHKR') for buyer_item_name_raw and apply it to ALL items. 
-3. Quantity Logic: If a line says '5 Pcs 120 Mtr', the total_qty is 120. Do NOT use the piece count as total_qty.
-4. Date: Indian format is DD/MM/YYYY.
-5. Serials & Context: Handwritten '0' often looks like '9'. If you see a sequence like '91, 92, 93' followed by '04, 05, 06', use SMART LOGIC to correct it to '01, 02, 03'. Serial numbers almost always start from '01'. Expand ranges into full arrays (e.g., "01-05" -> ["01", "02", "03", "04", "05"]).
-6. No Item Unrolling: Return only ONE JSON object per line.
-7. Return ONLY valid JSON.`;
+1. Seller Identification: Extract the original seller name from the header. Ignore the buyer name.
+2. Primary Quantity: Purchase bills often list packaging counts (pieces/bundles) alongside total quantity (meters/kgs). Extract the total quantity used for the final amount calculation.
+3. Handwritten Context: Buyers often write internal item names or batch markers by hand. Extract these accurately. If written once at the top of a section, apply it to all items in that section.
+4. Serial Expansion: If a line includes a handwritten range of serial numbers, expand it into an array of individual strings.
+5. Smart Number Recognition: Use surrounding context to resolve ambiguous handwritten digits (e.g., ensuring serial sequences are logical).
+6. Date Format: Strictly follow the DD/MM/YYYY format found on Indian invoices.
+7. Return valid JSON only.`;
 
   try {
     const response = await fetch(
