@@ -41,7 +41,8 @@ Important rules:
    - The batch number for each unrolled entry uses the incrementing serial number from the range (01, 02, 03, 04, 05).
    - If an item has only one unit (e.g., 5 pcs, no meters) and NO serial range, keep it as a single entry.
 5. Quantities and Rates: Should be numbers only (no units or currency symbols). All amounts must be positive numbers.
-6. If you can't read a field clearly, use your best guess and note low confidence. Return ONLY valid JSON, no markdown, no explanation.`;
+6. If you can't read a field clearly, use your best guess and note low confidence. 
+7. Ensure the JSON is complete and NOT truncated. Return ONLY valid JSON, no markdown, no explanation.`;
 
 export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
   if (!GEMINI_API_KEY) {
@@ -69,7 +70,7 @@ export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
           }],
           generationConfig: {
             temperature: 0.1,
-            maxOutputTokens: 4096,
+            maxOutputTokens: 8192,
           },
           safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -89,15 +90,16 @@ export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
     const result = await response.json();
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    // Strip markdown code fences if present
-    let jsonStr = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
-    
-    // Robust JSON extraction: look for the first '{' and last '}'
-    const firstBrace = jsonStr.indexOf('{');
-    const lastBrace = jsonStr.lastIndexOf('}');
-    
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+    // Strip markdown code fences and extract JSON using regex
+    let jsonStr = text.trim();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+
+    if (jsonStr === '' || jsonStr === text.trim()) {
+       // If no braces found or regex didn't change anything, try stripping fences as fallback
+       jsonStr = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
     }
 
     if (jsonStr === '') {
