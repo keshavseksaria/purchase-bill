@@ -62,6 +62,20 @@ export async function POST(request) {
       };
     }
 
+    // Fetch master data for auto-mapping
+    const [ledgersRes, stockItemsRes] = await Promise.all([
+      supabase.from('ledgers').select('name'),
+      supabase.from('stock_items').select('name'),
+    ]);
+    const ledgers = ledgersRes.data || [];
+    const stockItemsMaster = stockItemsRes.data || [];
+
+    const normalize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    // Auto-map Party Name
+    const aiPartyName = extracted.party_name || '';
+    const mappedParty = ledgers.find(l => normalize(l.name) === normalize(aiPartyName))?.name || null;
+
     // Create entry
     const entryData = {
       id: entryId,
@@ -69,8 +83,8 @@ export async function POST(request) {
       date: extracted.date || null,
       supplier_invoice_no: extracted.supplier_invoice_no || null,
       supplier_invoice_date: extracted.supplier_invoice_date || null,
-      party_name: extracted.party_name || null,
-      party_name_raw: extracted.party_name || null,
+      party_name: mappedParty, // Use the fuzzy mapped name!
+      party_name_raw: aiPartyName,
       cgst: extracted.cgst || 0,
       sgst: extracted.sgst || 0,
       igst: extracted.igst || 0,
@@ -79,19 +93,24 @@ export async function POST(request) {
       error_message: extracted.error_message || null,
     };
 
-    const items = (extracted.items || []).map((item, idx) => ({
-      id: crypto.randomUUID(),
-      entry_id: entryId,
-      bill_item_name: item.bill_item_name || '',
-      name_of_item: item.name_of_item || item.bill_item_name || '',
-      batch_no: item.batch_no || '',
-      actual_qty: item.actual_qty || 0,
-      billed_qty: item.billed_qty || item.actual_qty || 0,
-      rate: item.rate || 0,
-      amount: item.amount || 0,
-      unit: item.unit || 'No.',
-      sort_order: idx,
-    }));
+    const items = (extracted.items || []).map((item, idx) => {
+      const aiItemName = item.bill_item_name || '';
+      const mappedItem = stockItemsMaster.find(s => normalize(s.name) === normalize(aiItemName))?.name || null;
+      
+      return {
+        id: crypto.randomUUID(),
+        entry_id: entryId,
+        bill_item_name: aiItemName,
+        name_of_item: mappedItem, // Use the fuzzy mapped name!
+        batch_no: item.batch_no || '',
+        actual_qty: item.actual_qty || 0,
+        billed_qty: item.billed_qty || item.actual_qty || 0,
+        rate: item.rate || 0,
+        amount: item.amount || 0,
+        unit: item.unit || 'No.',
+        sort_order: idx,
+      };
+    });
 
     if (isDemoMode) {
       const entry = demoStore.createEntry(entryData);
