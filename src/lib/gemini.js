@@ -108,8 +108,9 @@ Extraction Rules:
 1. UNROLLING: You must return ONE item object per serial number. Do not return ranges.
 2. HANDWRITTEN CODES: Look for ink text (like SHKR). These can be anywhere. If written once, apply to all items in that group.
 3. SMART SERIALS: Use logic to fix misreads. Serial numbers almost always start from '01'. If you see '91-85', it is '01-05'.
-4. MATH: Ensure (actual_qty * rate) equals the amount for each unrolled row.
-5. Return ONLY valid JSON.`;
+4. SEQUENTIALITY: Serial numbers within an item group are ALWAYS perfectly sequential (e.g., 20, 21, 22, 23...). If a number looks like '27' but is positioned between '20' and '22', it is definitely '21'. Use this context to correct ambiguous handwriting.
+5. MATH: Ensure (actual_qty * rate) equals the amount for each unrolled row.
+6. Return ONLY valid JSON.`;
 
   try {
     const response = await fetch(
