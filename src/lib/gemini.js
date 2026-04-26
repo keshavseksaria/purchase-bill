@@ -107,10 +107,13 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
 
 Extraction Rules:
 1. Seller Identification: Extract the original seller name from the header. Ignore the buyer name.
-2. Primary Quantity: Purchase bills often list packaging counts (pieces/bundles) alongside total quantity (meters/kgs). Extract the total quantity used for the final amount calculation.
-3. Handwritten Context: Buyers often write internal item names or batch markers by hand. Extract these accurately. If written once at the top of a section, apply it to all items in that section.
-4. Serial Expansion: If a line includes a handwritten range of serial numbers, expand it into an array of individual strings.
-5. Smart Number Recognition: Use surrounding context to resolve ambiguous handwritten digits (e.g., ensuring serial sequences are logical).
+2. Internal Item Codes (CRITICAL): The buyer writes their own internal item name/code BY HAND (e.g., 'SHKR'). These are ALWAYS handwritten. 
+   - IGNORE the printed item names for the `buyer_item_name_raw` field.
+   - Look specifically for HANDWRITTEN text at the top of the table or in the margins.
+   - If a handwritten code is written once at the top, apply it to EVERY item in that list.
+3. Primary Quantity: Extract the total volume (meters/kgs) used for the final amount calculation. Ignore packaging counts (pcs/bundles) if both are present.
+4. Serial Expansion: If a line includes a handwritten range of serial numbers (e.g. 01-10), expand it into an array ['01', '02', ..., '10'].
+5. Smart Number Recognition: Use sequence logic to correct misread handwritten serials (e.g. 91 -> 01 if followed by 02).
 6. Date Format: Strictly follow the DD/MM/YYYY format found on Indian invoices.
 7. Return valid JSON only.`;
 
