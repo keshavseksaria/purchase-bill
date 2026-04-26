@@ -81,6 +81,7 @@ Critical Mapping Rules:
           generationConfig: {
             temperature: 0.1,
             maxOutputTokens: 8192,
+            response_mime_type: "application/json",
           },
           safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -101,7 +102,12 @@ Critical Mapping Rules:
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     let jsonStr = text.trim();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    // Clean markdown if present (though response_mime_type should prevent it)
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+    }
+    
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
     if (jsonMatch) jsonStr = jsonMatch[0];
 
     if (jsonStr === '') throw new Error('Gemini returned an empty response.');
@@ -109,7 +115,8 @@ Critical Mapping Rules:
     try {
       return JSON.parse(jsonStr);
     } catch (parseErr) {
-      throw new Error(`AI generated invalid JSON. Raw: ${text.substring(0, 100)}...`);
+      console.error('JSON Parse Error. Raw Text:', text);
+      throw new Error(`AI generated invalid JSON. ${parseErr.message}`);
     }
   } catch (error) {
     console.error('Gemini extraction failed:', error);
