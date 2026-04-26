@@ -42,6 +42,7 @@ const state = {
         pollIntervalSec: POLL_INTERVAL / 1000,
         syncIntervalMin: SYNC_INTERVAL / 60000,
     },
+    stockItemsMap: new Map(),
     startedAt: new Date().toISOString(),
 };
 
@@ -52,9 +53,47 @@ function addLog(type, message) {
     console.log(`  ${icons[type] || '•'} ${message}`);
 }
 
+// ─── XML Auto-Fixer ───
+
+function patchTallyXml(xml) {
+    let fixedXml = xml;
+
+    // 1. Fix Units (Replace 'No.' with actual unit)
+    fixedXml = fixedXml.replace(/<ALLINVENTORYENTRIES\.LIST>([\s\S]*?)<\/ALLINVENTORYENTRIES\.LIST>/g, (match, p1) => {
+        const nameMatch = p1.match(/<STOCKITEMNAME>(.*?)<\/STOCKITEMNAME>/);
+        if (nameMatch) {
+            const itemName = nameMatch[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+            const unit = state.stockItemsMap.get(itemName);
+            if (unit) {
+                // Tally needs exactly space before unit for QTY, but just /unit for RATE
+                p1 = p1.replace(/<RATE>(.*?)\/No\.<\/RATE>/g, `<RATE>$1/${unit}</RATE>`);
+                p1 = p1.replace(/<ACTUALQTY>(.*?) No\.<\/ACTUALQTY>/g, `<ACTUALQTY>$1 ${unit}</ACTUALQTY>`);
+                p1 = p1.replace(/<BILLEDQTY>(.*?) No\.<\/BILLEDQTY>/g, `<BILLEDQTY>$1 ${unit}</BILLEDQTY>`);
+            }
+        }
+        return `<ALLINVENTORYENTRIES.LIST>${p1}</ALLINVENTORYENTRIES.LIST>`;
+    });
+
+    // 2. Auto-Balance Math
+    let sum = 0;
+    const invMatches = fixedXml.matchAll(/<ACCOUNTINGALLOCATIONS\.LIST>[\s\S]*?<AMOUNT>(.*?)<\/AMOUNT>[\s\S]*?<\/ACCOUNTINGALLOCATIONS\.LIST>/g);
+    for (const m of invMatches) sum += parseFloat(m[1]);
+    
+    const ledMatches = fixedXml.matchAll(/<LEDGERENTRIES\.LIST>[\s\S]*?<ISPARTYLEDGER>No<\/ISPARTYLEDGER>[\s\S]*?<AMOUNT>(.*?)<\/AMOUNT>[\s\S]*?<\/LEDGERENTRIES\.LIST>/g);
+    for (const m of ledMatches) sum += parseFloat(m[1]);
+    
+    const requiredPartyAmount = (-sum).toFixed(2);
+    
+    fixedXml = fixedXml.replace(/(<ISPARTYLEDGER>Yes<\/ISPARTYLEDGER>[\s\S]*?<AMOUNT>)(.*?)(<\/AMOUNT>)/, `$1${requiredPartyAmount}$3`);
+    fixedXml = fixedXml.replace(/(<BILLALLOCATIONS\.LIST>[\s\S]*?<AMOUNT>)(.*?)(<\/AMOUNT>)/, `$1${requiredPartyAmount}$3`);
+
+    return fixedXml;
+}
+
 // ─── Tally Communication ───
 
-async function sendToTally(xml) {
+async function sendToTally(rawXml) {
+    const xml = patchTallyXml(rawXml);
     const fs = require('fs');
     fs.writeFileSync('last_payload.xml', xml);
     
@@ -247,6 +286,12 @@ async function syncMasterData() {
         const stockItems = parseNames(stockXml, 'OBJECT');
         state.masterData.stockItemCount = stockItems.length;
         addLog('info', `Found ${stockItems.length} stock items`);
+
+        // Store units in memory for patching XMLs
+        state.stockItemsMap.clear();
+        stockItems.forEach(i => {
+            if (i.name && i.unit) state.stockItemsMap.set(i.name, i.unit);
+        });
 
         // Upload to cloud
         const res = await fetch(`${CLOUD_URL}/api/master-data`, {
