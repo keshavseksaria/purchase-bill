@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const fetch = (...args) => import('node-fetch').then(m => m.default(...args));
 
-const CLOUD_URL = process.env.CLOUD_URL || 'http://localhost:3000';
+const CLOUD_URL = process.env.CLOUD_URL || 'https://purchase-bill.vercel.app';
 const TALLY_HOST = process.env.TALLY_HOST || 'http://localhost:9000';
 const POLL_INTERVAL = (parseInt(process.env.POLL_INTERVAL) || 10) * 1000;
 const SYNC_INTERVAL = (parseInt(process.env.SYNC_INTERVAL) || 30) * 60 * 1000;
@@ -55,6 +55,9 @@ function addLog(type, message) {
 // ─── Tally Communication ───
 
 async function sendToTally(xml) {
+    const fs = require('fs');
+    fs.writeFileSync('last_payload.xml', xml);
+    
     const res = await fetch(TALLY_HOST, {
         method: 'POST',
         headers: { 'Content-Type': 'text/xml' },
@@ -64,20 +67,35 @@ async function sendToTally(xml) {
 
     const responseText = await res.text();
 
-    // Check for errors in Tally response
-    if (responseText.includes('<LINEERROR>') || responseText.includes('<ERRORS>')) {
-        const errorMatch = responseText.match(/<LINEERROR>(.*?)<\/LINEERROR>/);
-        throw new Error(errorMatch ? errorMatch[1] : 'Tally import error — check Tally for details');
-    }
-
-    // Check for success
+    // Check for explicit success
     if (responseText.includes('<CREATED>1</CREATED>') || responseText.includes('<CREATED> 1</CREATED>')) {
         return { success: true, response: responseText };
     }
-
-    // Check if there were 0 errors (also success)
-    if (responseText.includes('<ERRORS>0</ERRORS>') || responseText.includes('<ERRORS> 0</ERRORS>')) {
+    if (responseText.includes('<ALTERED>1</ALTERED>') || responseText.includes('<ALTERED> 1</ALTERED>')) {
         return { success: true, response: responseText };
+    }
+
+    // If it was not created and went to exceptions
+    if (responseText.includes('<CREATED>0</CREATED>') || responseText.includes('<CREATED> 0</CREATED>')) {
+        if (responseText.includes('<EXCEPTIONS>') && !responseText.includes('<EXCEPTIONS>0</EXCEPTIONS>')) {
+            throw new Error('Import failed: Moved to Exceptions in Tally (likely an unknown ledger or missing GST details). Please check Tally Exception Reports.');
+        }
+        
+        // If there were no errors but 0 created, Tally ignored it
+        if (responseText.includes('<ERRORS>0</ERRORS>') || responseText.includes('<ERRORS> 0</ERRORS>')) {
+            throw new Error('Import failed: 0 Vouchers Created. Tally silently rejected the data. Check the payload.');
+        }
+    }
+
+    // Check for errors in Tally response
+    if (responseText.includes('<LINEERROR>') || responseText.includes('<ERRORS>')) {
+        const errorMatch = responseText.match(/<LINEERROR>(.*?)<\/LINEERROR>/);
+        let errorDetails = 'check Tally for details';
+        if (!errorMatch) {
+            const cleanText = responseText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            errorDetails = `Raw response: ${cleanText.substring(0, 150)}`;
+        }
+        throw new Error(errorMatch ? errorMatch[1] : `Tally import error — ${errorDetails}`);
     }
 
     return { success: false, response: responseText };
@@ -102,49 +120,97 @@ async function fetchFromTally(xml) {
 
 const LEDGER_REQUEST = `<ENVELOPE>
   <HEADER>
-    <TALLYREQUEST>ExportData</TALLYREQUEST>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>CustomLedgerExport</ID>
   </HEADER>
   <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>ODBC Report</REPORTNAME>
-        <STATICVARIABLES>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-      <REQUESTDATA>
-        <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <COLLECTION NAME="CustomLedgers" ISINITIALIZE="Yes">
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="CustomLedgerExport">
+            <FORMS>CustomLedgerForm</FORMS>
+          </REPORT>
+          <FORM NAME="CustomLedgerForm">
+            <PARTS>CustomLedgerPart</PARTS>
+          </FORM>
+          <PART NAME="CustomLedgerPart">
+            <LINES>CustomLedgerLine</LINES>
+            <REPEAT>CustomLedgerLine : CustomLedgerColl</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="CustomLedgerLine">
+            <FIELDS>FldLedgerName, FldLedgerParent</FIELDS>
+            <XMLTAG>"OBJECT"</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldLedgerName">
+            <SET>$Name</SET>
+            <XMLTAG>"NAME"</XMLTAG>
+          </FIELD>
+          <FIELD NAME="FldLedgerParent">
+            <SET>$Parent</SET>
+            <XMLTAG>"PARENT"</XMLTAG>
+          </FIELD>
+          <COLLECTION NAME="CustomLedgerColl">
             <TYPE>Ledger</TYPE>
-            <FETCH>Name,Parent</FETCH>
           </COLLECTION>
-        </TALLYMESSAGE>
-      </REQUESTDATA>
-    </EXPORTDATA>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
   </BODY>
 </ENVELOPE>`;
 
 const STOCK_ITEM_REQUEST = `<ENVELOPE>
   <HEADER>
-    <TALLYREQUEST>ExportData</TALLYREQUEST>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>CustomStockItemExport</ID>
   </HEADER>
   <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>ODBC Report</REPORTNAME>
-        <STATICVARIABLES>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-      <REQUESTDATA>
-        <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          <COLLECTION NAME="CustomStockItems" ISINITIALIZE="Yes">
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="CustomStockItemExport">
+            <FORMS>CustomStockItemForm</FORMS>
+          </REPORT>
+          <FORM NAME="CustomStockItemForm">
+            <PARTS>CustomStockItemPart</PARTS>
+          </FORM>
+          <PART NAME="CustomStockItemPart">
+            <LINES>CustomStockItemLine</LINES>
+            <REPEAT>CustomStockItemLine : CustomStockItemColl</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="CustomStockItemLine">
+            <FIELDS>FldStockItemName, FldStockItemParent, FldStockItemBaseUnits</FIELDS>
+            <XMLTAG>"OBJECT"</XMLTAG>
+          </LINE>
+          <FIELD NAME="FldStockItemName">
+            <SET>$Name</SET>
+            <XMLTAG>"NAME"</XMLTAG>
+          </FIELD>
+          <FIELD NAME="FldStockItemParent">
+            <SET>$Parent</SET>
+            <XMLTAG>"PARENT"</XMLTAG>
+          </FIELD>
+          <FIELD NAME="FldStockItemBaseUnits">
+            <SET>$BaseUnits</SET>
+            <XMLTAG>"BASEUNITS"</XMLTAG>
+          </FIELD>
+          <COLLECTION NAME="CustomStockItemColl">
             <TYPE>StockItem</TYPE>
-            <FETCH>Name,Parent,BaseUnits</FETCH>
           </COLLECTION>
-        </TALLYMESSAGE>
-      </REQUESTDATA>
-    </EXPORTDATA>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
   </BODY>
 </ENVELOPE>`;
 
