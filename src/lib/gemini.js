@@ -84,42 +84,35 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   const EXTRACTION_PROMPT = `Analyze this purchase bill image and extract as JSON:
 
 {
-  "date": "YYYY-MM-DD (Indian bills are DD/MM/YYYY. If you see 19/12/25, it is 2025-12-19)",
+  "date": "YYYY-MM-DD",
   "supplier_invoice_no": "string",
   "supplier_invoice_date": "YYYY-MM-DD",
-  "party_name_raw": "Original seller/vendor name at the top of the bill (e.g. 'SALERAJ CORPORATION'). Ignore the buyer name (like Seksaria Vastra Bhandar).",
+  "party_name_raw": "Extract the SELLER name (e.g., 'SALERAJ CORPORATION').",
   "items": [
     {
-      "seller_item_name": "Item name as written by seller (could be printed or handwritten)",
-      "buyer_item_name_raw": "The handwritten item name or category added by the buyer. Look for handwritten text at the top of the table or near the item rows. If a row is blank, inherit the handwritten name from the preceding row or the header.",
-      "serials": ["Array of individual serial numbers extracted from handwritten notes (e.g., expand ranges like '01-05' into ['01', '02', '03', '04', '05'])"],
-      "total_qty": "The primary quantity used for billing (e.g., total meters, total weight). If multiple numbers exist (like piece count vs total weight), extract the one that represents the base unit of the rate/amount.",
+      "seller_item_name": "The printed item name (e.g., 'ARISTOCRAT-174')",
+      "buyer_item_name_raw": "The INTERNAL code (e.g., 'SHKR' or 'SMKR'). This is ALWAYS handwritten. It is often found near 'L.R. NO.' or at the top of the table. Apply to all items if found once.",
+      "serials": ["List of handwritten serials (e.g., '01', '02', '03') from the Design column"],
+      "total_qty": "Total meters/kgs for this row.",
       "rate": number,
       "amount_total": number
     }
   ],
   "cgst": number,
   "sgst": number,
-  "igst": number,
-  "round_off": number,
   "total": number
 }
 
 Extraction Rules:
-1. Seller Identification: Extract the original seller name from the header. Ignore the buyer name.
-2. Internal Item Codes (CRITICAL): The buyer writes their own internal item name/code BY HAND (e.g., 'SHKR'). These are ALWAYS handwritten. 
-   - IGNORE the printed item names for the `buyer_item_name_raw` field.
-   - Look specifically for HANDWRITTEN text at the top of the table or in the margins.
-   - If a handwritten code is written once at the top, apply it to EVERY item in that list.
-3. Primary Quantity: Extract the total volume (meters/kgs) used for the final amount calculation. Ignore packaging counts (pcs/bundles) if both are present.
-4. Serial Expansion: If a line includes a handwritten range of serial numbers (e.g. 01-10), expand it into an array ['01', '02', ..., '10'].
-5. Smart Number Recognition: Use sequence logic to correct misread handwritten serials (e.g. 91 -> 01 if followed by 02).
-6. Date Format: Strictly follow the DD/MM/YYYY format found on Indian invoices.
-7. Return valid JSON only.`;
+1. Internal Item Code: The buyer writes a short code (like 'SHKR' or 'SMKR') BY HAND. It is usually near the top left of the table or header. IGNORE printed column headers like 'MILLS' or 'QUALITY' for this field.
+2. Serial Expansion: Expand handwritten ranges like '01-05' into individual strings ['01', '02', '03', '04', '05'].
+3. Inheritance: If the internal code is only written once at the top, apply it to every row in the bill.
+4. Date: strictly DD/MM/YYYY on the bill.
+5. JSON only.`;
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
