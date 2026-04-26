@@ -223,7 +223,6 @@ function UploadPage({ addToast, onDone }) {
           type="file"
           accept="image/*"
           multiple
-          capture="environment"
           onChange={e => handleFiles(e.target.files)}
           style={{ display: 'none' }}
         />
@@ -285,11 +284,6 @@ function EntriesPage({ addToast, onSelect }) {
   }, [filter, addToast]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
-
-  const statusCounts = entries.reduce((acc, e) => {
-    acc[e.status] = (acc[e.status] || 0) + 1;
-    return acc;
-  }, {});
 
   const filters = [
     { key: 'all', label: 'All' },
@@ -377,6 +371,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(false);
+  const [masterDiscount, setMasterDiscount] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -399,20 +394,66 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     load();
   }, [entryId, addToast]);
 
+  const recalculateTaxes = (currentItems, currentEntry) => {
+    const itemsTotal = currentItems.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
+    const cgst = Number((itemsTotal * 0.025).toFixed(2));
+    const sgst = Number((itemsTotal * 0.025).toFixed(2));
+    const igst = Number((itemsTotal * 0.05).toFixed(2));
+    
+    const subtotal = itemsTotal + cgst + sgst + igst;
+    const rounded = Math.round(subtotal);
+    const roundOff = Number((rounded - subtotal).toFixed(2));
+    
+    return {
+      ...currentEntry,
+      cgst,
+      sgst,
+      igst,
+      round_off: roundOff,
+      total: rounded
+    };
+  };
+
   const updateField = (field, value) => {
-    setEntry(prev => ({ ...prev, [field]: value }));
+    setEntry(prev => {
+      const next = { ...prev, [field]: value };
+      return next;
+    });
   };
 
   const updateItem = (idx, field, value) => {
     setItems(prev => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
-      // Auto-calculate amount when qty or rate changes
-      if (field === 'actual_qty' || field === 'rate') {
-        const qty = field === 'actual_qty' ? parseFloat(value) || 0 : parseFloat(next[idx].actual_qty) || 0;
-        const rate = field === 'rate' ? parseFloat(value) || 0 : parseFloat(next[idx].rate) || 0;
-        next[idx].amount = qty * rate;
+      
+      // Auto-calculate amount when qty, rate, or discount changes
+      if (field === 'actual_qty' || field === 'rate' || field === 'discount') {
+        const qty = parseFloat(next[idx].actual_qty) || 0;
+        const rate = parseFloat(next[idx].rate) || 0;
+        const discount = parseFloat(next[idx].discount) || 0;
+        next[idx].amount = (qty * rate) - discount;
       }
+      
+      setEntry(e => recalculateTaxes(next, e));
+      return next;
+    });
+  };
+
+  const handleMasterDiscountChange = (val) => {
+    setMasterDiscount(val);
+    const discountVal = parseFloat(val) || 0;
+    setItems(prev => {
+      const next = prev.map(item => {
+        const qty = parseFloat(item.actual_qty) || 0;
+        const rate = parseFloat(item.rate) || 0;
+        const updatedDiscount = val === '' ? 0 : discountVal;
+        return {
+          ...item,
+          discount: updatedDiscount,
+          amount: (qty * rate) - updatedDiscount
+        };
+      });
+      setEntry(e => recalculateTaxes(next, e));
       return next;
     });
   };
@@ -426,33 +467,28 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       actual_qty: 0,
       billed_qty: 0,
       rate: 0,
+      discount: 0,
       amount: 0,
       unit: 'No.',
     }]);
   };
 
   const removeItem = (idx) => {
-    setItems(prev => prev.filter((_, i) => i !== idx));
+    setItems(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      setEntry(e => recalculateTaxes(next, e));
+      return next;
+    });
   };
 
   const save = async () => {
     setSaving(true);
-    
-    // Recalculate total before saving so backend math matches UI
-    const itemsTotal = items.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
-    const newTotal = itemsTotal +
-      (parseFloat(entry.cgst) || 0) +
-      (parseFloat(entry.sgst) || 0) +
-      (parseFloat(entry.igst) || 0) -
-      (parseFloat(entry.round_off) || 0);
-      
-    const entryToSave = { ...entry, total: newTotal };
-
+    const finalEntry = recalculateTaxes(items, entry);
     try {
       const res = await fetch(`/api/entries/${entryId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entry: entryToSave, items }),
+        body: JSON.stringify({ entry: finalEntry, items }),
       });
       if (!res.ok) throw new Error('Save failed');
       const data = await res.json();
@@ -499,11 +535,6 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
   }
 
   const itemsTotal = items.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
-  const grandTotal = itemsTotal +
-    (parseFloat(entry.cgst) || 0) +
-    (parseFloat(entry.sgst) || 0) +
-    (parseFloat(entry.igst) || 0) -
-    (parseFloat(entry.round_off) || 0);
 
   return (
     <>
@@ -602,7 +633,18 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
 
           {/* Items */}
           <div className="form-section">
-            <div className="form-section-title">Items ({items.length})</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div className="form-section-title" style={{ marginBottom: 0 }}>Items ({items.length})</div>
+              <div className="form-group" style={{ marginBottom: 0, width: 150 }}>
+                <input
+                  className="form-input"
+                  placeholder="Master Discount"
+                  type="number"
+                  value={masterDiscount}
+                  onChange={e => handleMasterDiscountChange(e.target.value)}
+                />
+              </div>
+            </div>
             <div className="items-table-wrap">
               <table className="items-table">
                 <thead>
@@ -612,6 +654,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                     <th>Batch</th>
                     <th>Qty</th>
                     <th>Rate</th>
+                    <th>Disc</th>
                     <th>Amount</th>
                     <th style={{ width: 36 }}></th>
                   </tr>
@@ -675,6 +718,16 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                           style={{ width: 80 }}
                         />
                       </td>
+                      <td>
+                        <input
+                          className="form-input"
+                          type="number"
+                          step="0.01"
+                          value={item.discount || ''}
+                          onChange={e => updateItem(idx, 'discount', e.target.value)}
+                          style={{ width: 70 }}
+                        />
+                      </td>
                       <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                         ₹{Number(item.amount || 0).toLocaleString('en-IN')}
                       </td>
@@ -694,7 +747,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
             <div className="form-section-title">Totals</div>
             <div className="totals-grid">
               <div className="form-group">
-                <label className="form-label">CGST</label>
+                <label className="form-label">CGST (2.5%)</label>
                 <input
                   className="form-input"
                   type="number"
@@ -704,7 +757,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">SGST</label>
+                <label className="form-label">SGST (2.5%)</label>
                 <input
                   className="form-input"
                   type="number"
@@ -714,7 +767,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">IGST</label>
+                <label className="form-label">IGST (5%)</label>
                 <input
                   className="form-input"
                   type="number"
@@ -735,7 +788,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
               </div>
               <div className="total-row grand-total">
                 <span>Grand Total</span>
-                <span>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span>₹{(entry.total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
             </div>
           </div>
@@ -747,7 +800,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
         <div className="action-bar-status">
           <span className={`status-badge status-${entry.status}`}>{entry.status}</span>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            ₹{(entry.total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </span>
         </div>
         <div className="action-bar-buttons">
