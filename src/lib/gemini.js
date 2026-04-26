@@ -92,7 +92,7 @@ CRITICAL: UNROLL EVERY LINE. If a line shows "5 Pcs" or a serial range "01-05", 
   "items": [
     {
       "bill_item_name": "The printed description (e.g. ARISTOCRAT-174)",
-      "buyer_item_name_raw": "The HANDWRITTEN code (e.g. SHKR, SMKR). Look for ink text in margins or header. IGNORE the printed columns for this field.",
+      "buyer_item_name_raw": "The HANDWRITTEN internal code (e.g. SHKR, SURA). This is ALWAYS a single word without spaces. If you see text like 'SURA 08012522', only extract 'SURA'. IGNORE the printed columns for this field.",
       "serial": "The individual serial number (e.g. '01', '02'). If a range like 01-05 is given, you must create 5 separate item objects with serials '01', '02', '03', '04', '05'.",
       "actual_qty": "The quantity for this SINGLE piece (e.g. if 120mtr total for 5pcs, this value is 24).",
       "rate": number,
