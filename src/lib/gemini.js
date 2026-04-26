@@ -47,14 +47,12 @@ function findBestMatch(rawName, list) {
     if (item.name.toLowerCase().trim() === target) return item.name;
   }
 
-  // 2. Second Pass: Look for best substring or distance
+  // 2. Second Pass: Look for best fuzzy match
   for (const item of list) {
     const itemName = item.name.toLowerCase().trim();
     
     // Substring match: only prioritize if it's a very strong match
-    // (e.g. "shkr 12012519" contains "shkr")
     if (target.includes(itemName) && itemName.length >= target.length * 0.4) {
-      // Don't return immediately; see if there's a closer one
       const dist = Math.abs(target.length - itemName.length) * 0.1;
       if (dist < bestDistance) {
         bestDistance = dist;
@@ -118,7 +116,7 @@ Extraction Rules:
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
