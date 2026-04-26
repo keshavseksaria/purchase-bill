@@ -55,7 +55,8 @@ export async function POST(request) {
         date: null,
         supplier_invoice_no: 'EXTRACTION_FAILED',
         supplier_invoice_date: null,
-        party_name: `Error: ${aiErr.message}`, // Pass error to UI for debugging
+        party_name: null,
+        error_message: aiErr.message, // Save error to database
         items: [],
         cgst: 0, sgst: 0, igst: 0, round_off: 0, total: 0,
       };
@@ -75,6 +76,7 @@ export async function POST(request) {
       igst: extracted.igst || 0,
       round_off: extracted.round_off || 0,
       total: extracted.total || 0,
+      error_message: extracted.error_message || null,
     };
 
     const items = (extracted.items || []).map((item, idx) => ({
