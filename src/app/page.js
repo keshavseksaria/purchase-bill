@@ -437,11 +437,22 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
 
   const save = async () => {
     setSaving(true);
+    
+    // Recalculate total before saving so backend math matches UI
+    const itemsTotal = items.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
+    const newTotal = itemsTotal +
+      (parseFloat(entry.cgst) || 0) +
+      (parseFloat(entry.sgst) || 0) +
+      (parseFloat(entry.igst) || 0) -
+      (parseFloat(entry.round_off) || 0);
+      
+    const entryToSave = { ...entry, total: newTotal };
+
     try {
       const res = await fetch(`/api/entries/${entryId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entry, items }),
+        body: JSON.stringify({ entry: entryToSave, items }),
       });
       if (!res.ok) throw new Error('Save failed');
       const data = await res.json();
