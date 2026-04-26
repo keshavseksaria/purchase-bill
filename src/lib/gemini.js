@@ -13,17 +13,17 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   const EXTRACTION_PROMPT = `Analyze this purchase bill image and extract as JSON:
 
 {
-  "date": "YYYY-MM-DD (Ensure the year is correct, usually 2024 or 2025. Do NOT swap day and year)",
+  "date": "YYYY-MM-DD (Indian bills are DD/MM/YYYY. If you see 19/12/25, it is 2025-12-19)",
   "supplier_invoice_no": "string",
   "supplier_invoice_date": "YYYY-MM-DD",
-  "party_name": "Mapped vendor name (EXACT match from VALID_LEDGERS)",
+  "party_name": "Mapped vendor name from VALID_LEDGERS. Match ignoring case/punctuation.",
   "party_name_raw": "Original vendor name as printed on bill (e.g. 'SALERAJ CORPORATION')",
   "items": [
     {
       "bill_item_name_printed": "Generic printed name",
-      "handwritten_name_raw": "The specific handwritten name found ABOVE or NEAR the printed item (e.g. 'shkr', 'smkr')",
-      "name_of_item": "Mapped stock item (EXACT match from VALID_STOCK_ITEMS). Use the HANDWRITTEN name for mapping. If no handwritten name, use the printed one.",
-      "serials": ["List of handwritten serial numbers for this line, e.g. ['01', '02']"],
+      "handwritten_name_raw": "Handwritten name found ABOVE or NEAR the item (e.g. 'shkr')",
+      "name_of_item": "Mapped stock item from VALID_STOCK_ITEMS. Match ignoring case. PRIORITY to handwritten name.",
+      "serials": ["List of handwritten serials, e.g. ['01', '02']"],
       "actual_qty_per_piece": number,
       "billed_qty_per_piece": number,
       "rate": number,
@@ -40,17 +40,16 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
 VALID_LEDGERS: ${masterData.ledgers.map(l => l.name).join(', ')}
 VALID_STOCK_ITEMS: ${masterData.stockItems.map(s => s.name).join(', ')}
 
-Strict Rules:
-1. Seller Identification: Find the SELLER (at the top). Map it to VALID_LEDGERS. 
-   - Example: If you read "SALERAJ CORPORATION", map it to "Saleraj Corporation" from the list.
-2. Handwritten Priority: Printed item names are often generic (like 'ARISTOCRAT'). You MUST find the HANDWRITTEN text near the item (e.g. 'Shkr') and use it to map to VALID_STOCK_ITEMS.
-3. Date Parsing: Be very careful. Indian bills use DD/MM/YYYY. If you see 19/12/25, it is Dec 19, 2025, NOT Dec 25, 2019.
-4. No Item Unrolling: Return only ONE JSON object per line on the bill. Use the "serials" array to list all serial numbers found for that line.
+Mapping Rules:
+1. Seller: Find the SELLER (top). Map it to the MOST SIMILAR name in VALID_LEDGERS regardless of case.
+2. Items: Search for HANDWRITTEN text near the items. Use that text to map to VALID_STOCK_ITEMS.
+3. Date: Indian format is DD/MM/YYYY. Ensure you don't swap day and year.
+4. No Item Unrolling: Return only ONE JSON object per line.
 5. Return ONLY valid JSON.`;
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
