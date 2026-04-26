@@ -76,6 +76,7 @@ export const demoStore = {
         billed_qty: item.billed_qty || 0,
         rate: item.rate || 0,
         amount: item.amount || 0,
+        discount: item.discount || 0,
         unit: item.unit || 'No.',
         sort_order: idx,
         created_at: item.created_at || new Date().toISOString(),

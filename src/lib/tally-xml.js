@@ -32,6 +32,7 @@ export function generateTallyXML(entry, items) {
     const qty = parseFloat(item.actual_qty) || 0;
     const billedQty = parseFloat(item.billed_qty) || qty;
     const rate = parseFloat(item.rate) || 0;
+    const discount = parseFloat(item.discount) || 0;
 
     inventoryXML += `
       <ALLINVENTORYENTRIES.LIST>
@@ -45,6 +46,7 @@ export function generateTallyXML(entry, items) {
        <ISPRIMARYITEM>No</ISPRIMARYITEM>
        <ISSCRAP>No</ISSCRAP>
        <RATE>${rate.toFixed(2)}/${unit}</RATE>
+       <DISCOUNT> ${discount.toFixed(2)}</DISCOUNT>
        <AMOUNT>-${amount.toFixed(2)}</AMOUNT>
        <ACTUALQTY> ${qty.toFixed(2)} ${unit}</ACTUALQTY>
        <BILLEDQTY> ${billedQty.toFixed(2)} ${unit}</BILLEDQTY>
@@ -187,6 +189,7 @@ export function generateTallyXML(entry, items) {
       <REFERENCE>${reference}</REFERENCE>
       <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>
       <ISINVOICE>Yes</ISINVOICE>
+      <HASDISCOUNTS>Yes</HASDISCOUNTS>
       <DIFFACTUALQTY>Yes</DIFFACTUALQTY>
       <ISDELETED>No</ISDELETED>
       <ISSYSTEM>No</ISSYSTEM>

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS entry_items (
     billed_qty DECIMAL(10,3) DEFAULT 0,
     rate DECIMAL(10,2) DEFAULT 0,
     amount DECIMAL(12,2) DEFAULT 0,
+    discount DECIMAL(5,2) DEFAULT 0,
     unit TEXT DEFAULT 'No.',
 
     sort_order INT DEFAULT 0,
