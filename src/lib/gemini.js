@@ -81,7 +81,8 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
     return getMockData();
   }
 
-  const EXTRACTION_PROMPT = `Analyze this purchase bill image and extract as JSON:
+  const EXTRACTION_PROMPT = `Analyze this purchase bill image and extract as JSON.
+CRITICAL: UNROLL EVERY LINE. If a line shows "5 Pcs" or a serial range "01-05", you must return 5 separate objects in the "items" array, one for each individual piece.
 
 {
   "date": "YYYY-MM-DD",
@@ -90,12 +91,12 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   "party_name_raw": "Extract the SELLER name from the invoice header.",
   "items": [
     {
-      "seller_item_name": "The original item description printed on the bill.",
-      "buyer_item_name_raw": "The internal item code or category added BY HAND by the buyer. These are ALWAYS handwritten. They may appear anywhere on the document: in the margins, the header, the footer, or directly next to or above item rows. If a handwritten note applies to a group of items, apply it to all of them.",
-      "serials": ["List of handwritten serial numbers or design markers for this item."],
-      "total_qty": "The primary billing quantity (e.g., total meters, kgs, or units).",
+      "bill_item_name": "The printed description (e.g. ARISTOCRAT-174)",
+      "buyer_item_name_raw": "The HANDWRITTEN code (e.g. SHKR, SMKR). Look for ink text in margins or header. IGNORE the printed columns for this field.",
+      "serial": "The individual serial number (e.g. '01', '02'). If a range like 01-05 is given, you must create 5 separate item objects with serials '01', '02', '03', '04', '05'.",
+      "actual_qty": "The quantity for this SINGLE piece (e.g. if 120mtr total for 5pcs, this value is 24).",
       "rate": number,
-      "amount_total": number
+      "amount": number
     }
   ],
   "cgst": number,
@@ -104,10 +105,10 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
 }
 
 Extraction Rules:
-1. Handwritten Internal Codes: Differentiate between the seller's printed descriptions and the buyer's handwritten annotations. The handwritten text represents the buyer's internal item name or code. Extract these accurately regardless of where they are written on the page.
-2. Quantity Extraction: Identify the total quantity used for the final line amount. Ignore secondary packaging counts (like piece counts) if a primary unit (like meters) is present.
-3. Serial Expansion: If serial numbers or design markers are written as a range (e.g., 01-10), expand them into a full array of individual strings.
-4. Document Intelligence: Use the overall context of the bill to link handwritten notes to the correct items.
+1. UNROLLING: You must return ONE item object per serial number. Do not return ranges.
+2. HANDWRITTEN CODES: Look for ink text (like SHKR). These can be anywhere. If written once, apply to all items in that group.
+3. SMART SERIALS: Use logic to fix misreads. Serial numbers almost always start from '01'. If you see '91-85', it is '01-05'.
+4. MATH: Ensure (actual_qty * rate) equals the amount for each unrolled row.
 5. Return ONLY valid JSON.`;
 
   try {
@@ -160,11 +161,9 @@ Extraction Rules:
       }
       const data = JSON.parse(cleaned);
 
-      // --- FUZZY MATCHING ---
+      // --- POST-PROCESSING ---
       data.party_name = findBestMatch(data.party_name_raw, masterData.ledgers);
 
-      // --- UNROLL ITEMS ---
-      const unrolledItems = [];
       const billDate = data.date || data.supplier_invoice_date || '';
       const dateParts = billDate.split('-');
       const yearShort = dateParts[0] ? dateParts[0].slice(-2) : '25';
@@ -172,37 +171,21 @@ Extraction Rules:
       const day = dateParts[2] ? dateParts[2].padStart(2, '0') : '01';
 
       if (data.items && Array.isArray(data.items)) {
-        for (const item of data.items) {
-          const serials = (item.serials && item.serials.length > 0) ? item.serials : ['01'];
-          const numPieces = serials.length;
-          
-          // Fuzzy match the item name
+        data.items = data.items.map(item => {
           const mappedName = findBestMatch(item.buyer_item_name_raw, masterData.stockItems);
-          
-          // Calculate qty per piece
-          const qtyPerPiece = item.total_qty ? (item.total_qty / numPieces) : 1;
-          const rate = item.rate || 0;
-
-          for (const sn of serials) {
-            unrolledItems.push({
-              bill_item_name: item.seller_item_name,
-              handwritten_name_raw: item.buyer_item_name_raw,
-              name_of_item: mappedName,
-              // Formula: MM SS YY DD
-              batch_no: `${month}${sn.padStart(2, '0')}${yearShort}${day}`,
-              actual_qty: qtyPerPiece,
-              billed_qty: qtyPerPiece,
-              rate: rate,
-              amount: qtyPerPiece * rate
-            });
-          }
-        }
+          const sn = item.serial || '01';
+          return {
+            ...item,
+            name_of_item: mappedName,
+            handwritten_name_raw: item.buyer_item_name_raw,
+            batch_no: `${month}${sn.padStart(2, '0')}${yearShort}${day}`,
+            billed_qty: item.actual_qty,
+            unit: 'No.'
+          };
+        });
       }
 
-      return {
-        ...data,
-        items: unrolledItems
-      };
+      return data;
     } catch (parseErr) {
       console.error('JSON Parse Error. Raw Text:', text);
       throw new Error(`AI generated invalid JSON: ${parseErr.message}`);
