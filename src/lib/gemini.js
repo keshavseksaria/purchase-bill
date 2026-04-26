@@ -31,13 +31,17 @@ Analyze this purchase bill image and extract the following information as JSON:
 }
 
 Important rules:
-1. The batch number format is 8 digits: MMSSYYDD where MM=month(01-12), SS=serial number, YY=year(last 2 digits), DD=date. Look for a starting batch number on the bill, and serial numbers written next to each item.
-2. If an item has a starting batch like "03012621", subsequent items increment the serial: 03022621, 03032621, etc.
-3. Quantities should be numbers only (no units).
-4. Rates should be numbers only (no currency symbols).
-5. All amounts should be positive numbers.
-6. If you can't read a field clearly, use your best guess and note low confidence.
-7. Return ONLY valid JSON, no markdown, no explanation.`;
+1. Party Name: Extract the *Seller's name* (the entity issuing the bill at the top). STRICTLY IGNORE the buyer's name (which is "SEKSARIA VASTRA BHANDAR" or variations).
+2. Item Name: Ignore the printed item names. Look ONLY for HANDWRITTEN item names (e.g., "shkr") written above or next to items. A handwritten item name applies to all subsequent items below it until a new handwritten name appears.
+3. Batch Number (MMSSYYDD): An 8-digit batch number will always be handwritten at the top of the items. The formula is MM (Month of invoice), SS (Serial number), YY (Last 2 digits of year), DD (Day of invoice). A serial number range (e.g., 01-05) or full batch number will be handwritten in front of each item. If the handwriting is unclear, cross-check it using the MMSSYYDD formula based on the invoice date.
+4. Item Unrolling (Crucial): If a printed line contains a piece count (e.g., 5 pcs), a total meter count (e.g., 120 mtrs), AND a handwritten serial range (e.g., "01-05" or "11-12"), you MUST unroll this single line into multiple separate JSON entries (one for each piece).
+   - Example unrolling: "5 pcs, 120 mtrs, range 01-05" becomes 5 entries.
+   - For each unrolled entry: The quantity (actual_qty and billed_qty) is total meters / pieces (e.g., 120 / 5 = 24).
+   - The amount is the unrolled quantity * rate (e.g., 24 * 118).
+   - The batch number for each unrolled entry uses the incrementing serial number from the range (01, 02, 03, 04, 05).
+   - If an item has only one unit (e.g., 5 pcs, no meters) and NO serial range, keep it as a single entry.
+5. Quantities and Rates: Should be numbers only (no units or currency symbols). All amounts must be positive numbers.
+6. If you can't read a field clearly, use your best guess and note low confidence. Return ONLY valid JSON, no markdown, no explanation.`;
 
 export async function extractBillData(imageBase64, mimeType = 'image/jpeg') {
   if (!GEMINI_API_KEY) {
