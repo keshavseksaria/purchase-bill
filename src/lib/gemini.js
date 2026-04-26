@@ -4,6 +4,74 @@
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+// --- Helper: Levenshtein Distance for Fuzzy Matching ---
+function getLevenshteinDistance(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          Math.min(
+            matrix[i][j - 1] + 1, // insertion
+            matrix[i - 1][j] + 1  // deletion
+          )
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+function findBestMatch(rawName, list) {
+  if (!rawName || !list || list.length === 0) return null;
+  const target = rawName.toLowerCase().trim();
+  
+  let bestMatch = null;
+  let bestDistance = Infinity;
+
+  for (const item of list) {
+    const itemName = item.name.toLowerCase().trim();
+    // Exact match optimization
+    if (itemName === target) return item.name;
+    
+    // Substring match optimization (e.g. if target is "shkr" and list has "shkr (new)")
+    if (itemName.includes(target) || target.includes(itemName)) {
+      // Prioritize substring matches by giving them a pseudo-distance based on length difference
+      const dist = Math.abs(itemName.length - target.length) * 0.1; 
+      if (dist < bestDistance) {
+        bestDistance = dist;
+        bestMatch = item.name;
+      }
+      continue;
+    }
+
+    const distance = getLevenshteinDistance(target, itemName);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestMatch = item.name;
+    }
+  }
+
+  // Only return if it's a reasonable match (e.g., less than 60% of the length changed)
+  if (bestDistance <= Math.max(3, target.length * 0.6)) {
+    return bestMatch;
+  }
+  return null;
+}
+
 export async function extractBillData(imageBase64, masterData = { ledgers: [], stockItems: [] }, mimeType = 'image/jpeg') {
   if (!GEMINI_API_KEY) {
     console.warn('Gemini API key not set — returning mock data');
@@ -16,16 +84,13 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   "date": "YYYY-MM-DD (Indian bills are DD/MM/YYYY. If you see 19/12/25, it is 2025-12-19)",
   "supplier_invoice_no": "string",
   "supplier_invoice_date": "YYYY-MM-DD",
-  "party_name": "Mapped vendor name from VALID_LEDGERS. Match ignoring case/punctuation.",
-  "party_name_raw": "Original vendor name as printed on bill (e.g. 'SALERAJ CORPORATION')",
+  "party_name_raw": "Original seller/vendor name at the top of the bill (e.g. 'SALERAJ CORPORATION'). Ignore the buyer name (like Seksaria Vastra Bhandar).",
   "items": [
     {
-      "bill_item_name_printed": "Generic printed name",
-      "handwritten_name_raw": "Handwritten name found ABOVE or NEAR the item (e.g. 'shkr')",
-      "name_of_item": "Mapped stock item from VALID_STOCK_ITEMS. Match ignoring case. PRIORITY to handwritten name.",
-      "serials": ["List of handwritten serials, e.g. ['01', '02']"],
-      "actual_qty_per_piece": number,
-      "billed_qty_per_piece": number,
+      "seller_item_name": "Item name as written by seller (could be printed or handwritten)",
+      "buyer_item_name_raw": "The item name added by the buyer (e.g. 'shkr', 'smkr'). Look ABOVE the item, IN FRONT of the item, or at the TOP of the table. If a row has no handwritten name, INHERIT the name from the row above it.",
+      "serials": ["List of handwritten serials for this line, e.g. ['01', '02', '03'] or ['91']"],
+      "total_qty": number,
       "rate": number,
       "amount_total": number
     }
@@ -37,15 +102,13 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   "total": number
 }
 
-VALID_LEDGERS: ${masterData.ledgers.map(l => l.name).join(', ')}
-VALID_STOCK_ITEMS: ${masterData.stockItems.map(s => s.name).join(', ')}
-
-Mapping Rules:
-1. Seller: Find the SELLER (top). Map it to the MOST SIMILAR name in VALID_LEDGERS regardless of case.
-2. Items: Search for HANDWRITTEN text near the items. Use that text to map to VALID_STOCK_ITEMS.
+Extraction Rules:
+1. Seller: Extract the main seller name at the top.
+2. Items & Inheritance: Buyers often write the item name (e.g. 'shkr') above the first item, and it applies to subsequent items. If a row is missing a handwritten name, carry forward the handwritten name from the row above it.
 3. Date: Indian format is DD/MM/YYYY. Ensure you don't swap day and year.
-4. No Item Unrolling: Return only ONE JSON object per line.
-5. Return ONLY valid JSON.`;
+4. Serials: Look for handwritten numbers in front of items (like '01-05'). Expand ranges into a full array (e.g., ["01", "02", "03", "04", "05"]).
+5. No Item Unrolling: Return only ONE JSON object per line. We will do the math later.
+6. Return ONLY valid JSON.`;
 
   try {
     const response = await fetch(
@@ -97,29 +160,40 @@ Mapping Rules:
       }
       const data = JSON.parse(cleaned);
 
+      // --- FUZZY MATCHING ---
+      data.party_name = findBestMatch(data.party_name_raw, masterData.ledgers);
+
       // --- UNROLL ITEMS ---
       const unrolledItems = [];
       const billDate = data.date || data.supplier_invoice_date || '';
-      // Ensure we parse the date correctly (expecting YYYY-MM-DD from Gemini)
       const dateParts = billDate.split('-');
-      const day = dateParts[2] ? dateParts[2].padStart(2, '0') : '';
-      const yearShort = dateParts[0] ? dateParts[0].slice(-2) : '';
-      const month = dateParts[1] ? dateParts[1].padStart(2, '0') : '';
+      const yearShort = dateParts[0] ? dateParts[0].slice(-2) : '25';
+      const month = dateParts[1] ? dateParts[1].padStart(2, '0') : '01';
+      const day = dateParts[2] ? dateParts[2].padStart(2, '0') : '01';
 
       if (data.items && Array.isArray(data.items)) {
         for (const item of data.items) {
           const serials = (item.serials && item.serials.length > 0) ? item.serials : ['01'];
+          const numPieces = serials.length;
+          
+          // Fuzzy match the item name
+          const mappedName = findBestMatch(item.buyer_item_name_raw, masterData.stockItems);
+          
+          // Calculate qty per piece
+          const qtyPerPiece = item.total_qty ? (item.total_qty / numPieces) : 1;
+          const rate = item.rate || 0;
+
           for (const sn of serials) {
             unrolledItems.push({
-              bill_item_name: item.bill_item_name_printed || item.bill_item_name,
-              handwritten_name_raw: item.handwritten_name_raw,
-              name_of_item: item.name_of_item,
+              bill_item_name: item.seller_item_name,
+              handwritten_name_raw: item.buyer_item_name_raw,
+              name_of_item: mappedName,
               // Formula: MM SS YY DD
               batch_no: `${month}${sn.padStart(2, '0')}${yearShort}${day}`,
-              actual_qty: item.actual_qty_per_piece || 1,
-              billed_qty: item.billed_qty_per_piece || 1,
-              rate: item.rate,
-              amount: (item.billed_qty_per_piece || 1) * item.rate
+              actual_qty: qtyPerPiece,
+              billed_qty: qtyPerPiece,
+              rate: rate,
+              amount: qtyPerPiece * rate
             });
           }
         }
