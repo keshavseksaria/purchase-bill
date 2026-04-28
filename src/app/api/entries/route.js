@@ -15,10 +15,20 @@ export async function GET(request) {
       return NextResponse.json(demoStore.getEntries(status));
     }
 
-    let query = supabase.from('entries').select('*').order('created_at', { ascending: false });
+    // Optimization: Do NOT select the full image_url if it might contain Base64
+    // However, the frontend needs the thumbnail. 
+    // For now, we select needed fields. image_url is still needed for the thumbnail,
+    // but moving to Storage URLs will fix the weight.
+    let query = supabase
+      .from('entries')
+      .select('id, status, date, supplier_invoice_no, party_name, party_name_raw, total, image_url, created_at')
+      .order('created_at', { ascending: false });
+
     if (status && status !== 'all') query = query.eq('status', status);
+    
     const { data, error } = await query;
     if (error) throw error;
+    
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -57,96 +67,61 @@ export async function POST(request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Read file as base64
+    if (isDemoMode) {
+      return NextResponse.json({ error: 'Upload not supported in demo mode' }, { status: 400 });
+    }
+
+    const entryId = crypto.randomUUID();
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const base64 = buffer.toString('base64');
-    const mimeType = file.type || 'image/jpeg';
-
-    // Store image as data URL
-    let imageUrl = `data:${mimeType};base64,${base64}`;
-    const entryId = crypto.randomUUID();
-
-    // Fetch master data for Gemini mapping (using pagination to get ALL rows)
-    const ledgersData = await fetchAllRows('ledgers');
-    const stockItemsData = await fetchAllRows('stock_items');
     
-    const masterData = {
-      ledgers: ledgersData || [],
-      stockItems: stockItemsData || [],
-    };
+    // 1. Upload to Supabase Storage
+    const fileName = `${entryId}-${file.name}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('bill-images')
+      .upload(fileName, buffer, {
+        contentType: file.type,
+        upsert: false
+      });
 
-    // Extract data from bill using Gemini (passing master data for auto-mapping)
-    let extracted;
-    try {
-      extracted = await extractBillData(base64, masterData, mimeType);
-    } catch (aiErr) {
-      console.error('AI extraction failed:', aiErr);
-      extracted = {
-        date: null,
-        supplier_invoice_no: 'EXTRACTION_FAILED',
-        supplier_invoice_date: null,
-        party_name: null,
-        error_message: aiErr.message,
-        items: [],
-        cgst: 0, sgst: 0, igst: 0, round_off: 0, total: 0,
-      };
-    }
+    if (uploadError) throw uploadError;
 
-    // Create entry
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('bill-images')
+      .getPublicUrl(fileName);
+
+    // 2. Create entry with 'pending' status
     const entryData = {
       id: entryId,
-      image_url: imageUrl,
-      date: extracted.date || null,
-      supplier_invoice_no: extracted.supplier_invoice_no || null,
-      supplier_invoice_date: extracted.supplier_invoice_date || null,
-      party_name: extracted.party_name || null,
-      party_name_raw: extracted.party_name_raw || extracted.party_name || null,
-      cgst: extracted.cgst || 0,
-      sgst: extracted.sgst || 0,
-      igst: extracted.igst || 0,
-      round_off: extracted.round_off || 0,
-      total: extracted.total || 0,
-      error_message: extracted.error_message || null,
+      image_url: publicUrl,
+      status: 'pending',
+      party_name: 'Processing...',
+      total: 0
     };
 
-    const items = (extracted.items || []).map((item, idx) => ({
-      id: crypto.randomUUID(),
-      entry_id: entryId,
-      bill_item_name: item.handwritten_name_raw || item.bill_item_name || '', // Use figured name as primary display
-      name_of_item: item.name_of_item || '',
-      batch_no: item.batch_no || '',
-      actual_qty: item.actual_qty || 0,
-      billed_qty: item.billed_qty || item.actual_qty || 0,
-      rate: item.rate || 0,
-      amount: item.amount || 0,
-      discount: 0,
-      unit: item.unit || 'No.',
-      sort_order: idx,
-    }));
-
-    if (isDemoMode) {
-      const entry = demoStore.createEntry(entryData);
-      demoStore.setEntryItems(entryId, items);
-      return NextResponse.json({ entry, items });
-    }
-
-    // Supabase insert
     const { data: entry, error: entryErr } = await supabase
       .from('entries')
       .insert(entryData)
       .select()
       .single();
+
     if (entryErr) throw entryErr;
 
-    if (items.length > 0) {
-      const { error: itemsErr } = await supabase
-        .from('entry_items')
-        .insert(items);
-      if (itemsErr) throw itemsErr;
-    }
+    // 3. Trigger background processing (Fire and forget or use waitUntil if available)
+    // We'll use a simple fetch to our own background route
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    const host = request.headers.get('host');
+    const baseUrl = `${protocol}://${host}`;
+    
+    // Trigger background process - don't await!
+    fetch(`${baseUrl}/api/entries/${entryId}/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // In a real app, you'd add a secret token here
+    }).catch(err => console.error('Background trigger failed:', err));
 
-    return NextResponse.json({ entry, items });
+    return NextResponse.json({ entry });
   } catch (err) {
     console.error('POST /api/entries error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

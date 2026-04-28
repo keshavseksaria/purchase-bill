@@ -174,33 +174,29 @@ function UploadPage({ addToast, onDone }) {
   };
 
   const uploadAll = async () => {
-    if (files.length === 0) return;
+    if (files.length === 0 || uploading) return;
     setUploading(true);
 
-    let lastId = null;
-    for (let i = 0; i < files.length; i++) {
-      try {
-        addToast(`Processing bill ${i + 1} of ${files.length}...`, 'info');
+    try {
+      addToast(`Uploading ${files.length} bill${files.length > 1 ? 's' : ''}...`, 'info');
+      
+      // Upload all files in parallel (fast)
+      const uploadPromises = files.map(async (file, i) => {
         const formData = new FormData();
-        formData.append('file', files[i]);
+        formData.append('file', file);
         const res = await fetch('/api/entries', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error('Upload failed');
-        const data = await res.json();
-        lastId = data.entry?.id;
-        addToast(`Bill ${i + 1} processed successfully!`, 'success');
-      } catch (err) {
-        addToast(`Bill ${i + 1} failed: ${err.message}`, 'error');
-      }
-    }
+        if (!res.ok) throw new Error(`Bill ${i + 1} upload failed`);
+        return res.json();
+      });
 
-    setUploading(false);
-    setFiles([]);
-    setPreviews([]);
-
-    if (files.length === 1 && lastId) {
-      onDone(lastId);
-    } else {
+      await Promise.all(uploadPromises);
+      addToast(`Bills uploaded! AI processing started in background.`, 'success');
+      
+      // Navigate to entries list immediately so they don't have to wait
       onDone(null);
+    } catch (err) {
+      addToast(`Upload failed: ${err.message}`, 'error');
+      setUploading(false);
     }
   };
 
@@ -271,10 +267,9 @@ function UploadPage({ addToast, onDone }) {
       )}
 
       {uploading && (
-        <div className="loading-overlay">
-          <div className="spinner spinner-lg" />
-          <p>AI is reading your bills...</p>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>This may take a few seconds per bill</p>
+        <div style={{ marginTop: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <div className="spinner" style={{ marginBottom: 10 }} />
+          <p>Uploading to server...</p>
         </div>
       )}
     </div>
@@ -352,23 +347,43 @@ function EntriesPage({ addToast, onSelect }) {
               <div className="card-body">
                 <div className="entry-thumb">
                   {entry.image_url && (
-                    <img src={entry.image_url} alt="Bill" loading="lazy" />
+                    <img 
+                      src={entry.image_url.startsWith('data:') ? '/placeholder-bill.png' : entry.image_url} 
+                      alt="Bill" 
+                      loading="lazy" 
+                      style={{ opacity: entry.status === 'pending' && !entry.party_name ? 0.5 : 1 }}
+                    />
+                  )}
+                  {entry.status === 'pending' && !entry.party_name && (
+                    <div className="thumb-overlay">
+                      <div className="spinner spinner-sm" />
+                    </div>
                   )}
                 </div>
                 <div className="entry-info">
-                  <h3>{entry.party_name || entry.party_name_raw || 'Unknown Vendor'}</h3>
+                  <h3 style={{ color: (entry.status === 'pending' && !entry.party_name) ? 'var(--text-muted)' : 'inherit' }}>
+                    {entry.party_name || entry.party_name_raw || 'Processing...'}
+                  </h3>
                   <div className="entry-meta">
-                    <span>{entry.date || 'No date'}</span>
+                    <span>{entry.date || '—'}</span>
                     <span>{entry.supplier_invoice_no || ''}</span>
                   </div>
-                  <span className={`status-badge status-${entry.status}`}>
-                    {entry.status === 'pending' && '⏳'}
-                    {entry.status === 'approved' && '✓'}
-                    {entry.status === 'synced' && '✅'}
-                    {entry.status === 'failed' && '❌'}
-                    {' '}{entry.status}
-                  </span>
-                  <div className="entry-amount">₹{Number(entry.total || 0).toLocaleString('en-IN')}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                    <span className={`status-badge status-${entry.status}`}>
+                      {entry.status === 'pending' && !entry.party_name ? '⏳ processing' : (
+                        <>
+                          {entry.status === 'pending' && '⏳'}
+                          {entry.status === 'approved' && '✓'}
+                          {entry.status === 'synced' && '✅'}
+                          {entry.status === 'failed' && '❌'}
+                          {' '}{entry.status}
+                        </>
+                      )}
+                    </span>
+                    <div className="entry-amount" style={{ margin: 0 }}>
+                      {entry.total > 0 ? `₹${Number(entry.total).toLocaleString('en-IN')}` : '—'}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
