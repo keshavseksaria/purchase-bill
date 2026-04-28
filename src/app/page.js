@@ -555,7 +555,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     });
   };
 
-  const save = async () => {
+  const save = async (isSilent = false) => {
     setSaving(true);
     try {
       const res = await fetch(`/api/entries/${entryId}`, {
@@ -567,15 +567,20 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       const data = await res.json();
       setEntry(data.entry);
       setItems(data.items || []);
-      addToast('Saved successfully!', 'success');
+      if (!isSilent) addToast('Saved successfully!', 'success');
+      return true;
     } catch (err) {
       addToast(`Save failed: ${err.message}`, 'error');
+      return false;
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const approve = async () => {
-    await save();
+    const saved = await save(true); // Silent save before approval
+    if (!saved) return;
+
     try {
       const res = await fetch(`/api/entries/${entryId}/approve`, { method: 'POST' });
       if (!res.ok) throw new Error('Approval failed');
@@ -697,7 +702,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
             </div>
             {entry.party_name_raw && entry.party_name_raw !== entry.party_name && (
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                AI read: &quot;{entry.party_name_raw}&quot;
+                Original Bill Name: &quot;{entry.party_name_raw}&quot;
               </p>
             )}
           </div>
@@ -755,7 +760,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                         )}
                         {item.bill_item_name && item.bill_item_name !== item.name_of_item && (
                           <div className="bill-name" title={item.bill_item_name}>
-                            AI read: {item.bill_item_name}
+                            Original Bill Name: {item.bill_item_name}
                           </div>
                         )}
                       </td>

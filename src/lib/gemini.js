@@ -82,21 +82,25 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   }
 
   const EXTRACTION_PROMPT = `Analyze this purchase bill image and extract as JSON.
-CRITICAL: 
-1. If the bill is in HINDI, you MUST translate/transliterate the Party Name and Item Names into ENGLISH.
-2. UNROLL EVERY LINE. If a line shows "5 Pcs" or a serial range "01-05", you must return 5 separate objects in the "items" array, one for each individual piece.
 
+STRICT RULES:
+1. LITERAL EXTRACTION: Extract EXACTLY what is written. DO NOT infer, calculate, or change values. 
+2. BATCH NUMBERS: Extract the Batch/Serial number EXACTLY as printed or handwritten. DO NOT change it based on the bill date.
+3. HINDI TO ENGLISH: If the bill is in HINDI, translate/transliterate Party and Item names to ENGLISH.
+4. UNROLLING: Return ONE item object per individual piece/serial.
+
+JSON SCHEMA:
 {
   "date": "YYYY-MM-DD",
   "supplier_invoice_no": "string",
   "supplier_invoice_date": "YYYY-MM-DD",
-  "party_name_raw": "Extract the SELLER name from the invoice header (Translate to English if in Hindi).",
+  "party_name_raw": "Seller Name (English)",
   "items": [
     {
-      "bill_item_name": "The printed description in English (Translate if in Hindi)",
-      "buyer_item_name_raw": "The HANDWRITTEN internal code (e.g. SHKR, SURA). This is ALWAYS a single word without spaces.",
-      "serial": "The individual serial number.",
-      "actual_qty": "The quantity for this SINGLE piece.",
+      "bill_item_name": "Printed Description (English)",
+      "handwritten_name_raw": "Handwritten Code (e.g. SHKR)",
+      "batch_no": "Exact text",
+      "actual_qty": number,
       "rate": number,
       "amount": number
     }
@@ -106,11 +110,10 @@ CRITICAL:
   "total": number
 }
 
-Extraction Rules:
-1. HINDI TO ENGLISH: Always return party names and item descriptions in English.
-2. UNROLLING: Return ONE item object per serial number. Do not return ranges.
-3. HANDWRITTEN CODES: Look for ink text (like SHKR). These can be anywhere.
-4. Return ONLY valid JSON.`;
+IMPORTANT:
+- Return ONLY the JSON object.
+- Ensure all numbers are valid (no commas).
+- If information is missing, use null or 0.`;
 
   try {
     const response = await fetch(
