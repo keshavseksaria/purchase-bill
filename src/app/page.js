@@ -758,9 +758,9 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                             onChange={e => updateItem(idx, 'name_of_item', e.target.value)}
                           />
                         )}
-                        {item.bill_item_name && item.bill_item_name !== item.name_of_item && (
-                          <div className="bill-name" title={item.bill_item_name}>
-                            Original Bill Name: {item.bill_item_name}
+                        {item.handwritten_code && item.handwritten_code !== item.name_of_item && (
+                          <div className="bill-name" title={item.handwritten_code}>
+                            Raw Code: {item.handwritten_code}
                           </div>
                         )}
                       </td>
