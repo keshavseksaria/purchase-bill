@@ -416,8 +416,13 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
         ]);
         const entryData = await entryRes.json();
         const masterDataResp = await masterRes.json();
-        setEntry(entryData.entry);
-        setItems(entryData.items || []);
+        
+        // Use recalculateTaxes to ensure the total is correct on first load
+        const initialItems = entryData.items || [];
+        const calculatedEntry = recalculateTaxes(initialItems, entryData.entry);
+        
+        setEntry(calculatedEntry);
+        setItems(initialItems);
         setMasterData(masterDataResp);
       } catch (err) {
         addToast('Failed to load entry', 'error');

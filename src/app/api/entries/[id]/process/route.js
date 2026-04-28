@@ -102,8 +102,8 @@ export async function POST(request, { params }) {
       const items = extracted.items.map((item, idx) => ({
         id: crypto.randomUUID(),
         entry_id: entryId,
-        bill_item_name: item.handwritten_name_raw || item.bill_item_name || '',
-        name_of_item: item.name_of_item || '',
+        bill_item_name: item.bill_item_name || '', // This stores the printed name
+        name_of_item: item.name_of_item || item.handwritten_name_raw || '', // Primary name is the mapped stock item or handwritten code
         batch_no: item.batch_no || '',
         actual_qty: item.actual_qty || 0,
         billed_qty: item.billed_qty || item.actual_qty || 0,
