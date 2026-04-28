@@ -345,30 +345,22 @@ function EntriesPage({ addToast, onSelect }) {
           {entries.map(entry => (
             <div key={entry.id} className="card entry-card" onClick={() => onSelect(entry.id)}>
               <div className="card-body">
-                <div className="entry-thumb">
-                  {entry.image_url && (
-                    <img 
-                      src={entry.image_url.startsWith('data:') ? '/placeholder-bill.png' : entry.image_url} 
-                      alt="Bill" 
-                      loading="lazy" 
-                      style={{ opacity: entry.status === 'pending' && !entry.party_name ? 0.5 : 1 }}
-                    />
-                  )}
-                  {entry.status === 'pending' && !entry.party_name && (
-                    <div className="thumb-overlay">
-                      <div className="spinner spinner-sm" />
-                    </div>
-                  )}
-                </div>
                 <div className="entry-info">
-                  <h3 style={{ color: (entry.status === 'pending' && !entry.party_name) ? 'var(--text-muted)' : 'inherit' }}>
-                    {entry.party_name || entry.party_name_raw || 'Processing...'}
-                  </h3>
-                  <div className="entry-meta">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <h3 style={{ color: (entry.status === 'pending' && !entry.party_name) ? 'var(--text-muted)' : 'inherit', fontSize: '1.1rem' }}>
+                      {entry.party_name || entry.party_name_raw || 'Processing...'}
+                    </h3>
+                    <div className="entry-amount" style={{ margin: 0 }}>
+                      {entry.total > 0 ? `₹${Number(entry.total).toLocaleString('en-IN')}` : '—'}
+                    </div>
+                  </div>
+                  
+                  <div className="entry-meta" style={{ marginTop: 4 }}>
                     <span>{entry.date || '—'}</span>
                     <span>{entry.supplier_invoice_no || ''}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                     <span className={`status-badge status-${entry.status}`}>
                       {entry.status === 'pending' && !entry.party_name ? '⏳ processing' : (
                         <>
@@ -380,9 +372,9 @@ function EntriesPage({ addToast, onSelect }) {
                         </>
                       )}
                     </span>
-                    <div className="entry-amount" style={{ margin: 0 }}>
-                      {entry.total > 0 ? `₹${Number(entry.total).toLocaleString('en-IN')}` : '—'}
-                    </div>
+                    {entry.status === 'pending' && !entry.party_name && (
+                       <span className="spinner spinner-sm" />
+                    )}
                   </div>
                 </div>
               </div>

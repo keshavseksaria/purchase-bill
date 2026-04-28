@@ -82,19 +82,21 @@ export async function extractBillData(imageBase64, masterData = { ledgers: [], s
   }
 
   const EXTRACTION_PROMPT = `Analyze this purchase bill image and extract as JSON.
-CRITICAL: UNROLL EVERY LINE. If a line shows "5 Pcs" or a serial range "01-05", you must return 5 separate objects in the "items" array, one for each individual piece.
+CRITICAL: 
+1. If the bill is in HINDI, you MUST translate/transliterate the Party Name and Item Names into ENGLISH.
+2. UNROLL EVERY LINE. If a line shows "5 Pcs" or a serial range "01-05", you must return 5 separate objects in the "items" array, one for each individual piece.
 
 {
   "date": "YYYY-MM-DD",
   "supplier_invoice_no": "string",
   "supplier_invoice_date": "YYYY-MM-DD",
-  "party_name_raw": "Extract the SELLER name from the invoice header.",
+  "party_name_raw": "Extract the SELLER name from the invoice header (Translate to English if in Hindi).",
   "items": [
     {
-      "bill_item_name": "The printed description (e.g. ARISTOCRAT-174)",
-      "buyer_item_name_raw": "The HANDWRITTEN internal code (e.g. SHKR, SURA). This is ALWAYS a single word without spaces. If you see text like 'SURA 08012522', only extract 'SURA'. IGNORE the printed columns for this field.",
-      "serial": "The individual serial number (e.g. '01', '02'). If a range like 01-05 is given, you must create 5 separate item objects with serials '01', '02', '03', '04', '05'.",
-      "actual_qty": "The quantity for this SINGLE piece (e.g. if 120mtr total for 5pcs, this value is 24).",
+      "bill_item_name": "The printed description in English (Translate if in Hindi)",
+      "buyer_item_name_raw": "The HANDWRITTEN internal code (e.g. SHKR, SURA). This is ALWAYS a single word without spaces.",
+      "serial": "The individual serial number.",
+      "actual_qty": "The quantity for this SINGLE piece.",
       "rate": number,
       "amount": number
     }
@@ -105,12 +107,10 @@ CRITICAL: UNROLL EVERY LINE. If a line shows "5 Pcs" or a serial range "01-05", 
 }
 
 Extraction Rules:
-1. UNROLLING: You must return ONE item object per serial number. Do not return ranges.
-2. HANDWRITTEN CODES: Look for ink text (like SHKR). These can be anywhere. If written once, apply to all items in that group.
-3. SMART SERIALS: Use logic to fix misreads. Serial numbers almost always start from '01'. If you see '91-85', it is '01-05'.
-4. SEQUENTIALITY: Serial numbers within an item group are ALWAYS perfectly sequential (e.g., 20, 21, 22, 23...). If a number looks like '27' but is positioned between '20' and '22', it is definitely '21'. Use this context to correct ambiguous handwriting.
-5. MATH: Ensure (actual_qty * rate) equals the amount for each unrolled row.
-6. Return ONLY valid JSON.`;
+1. HINDI TO ENGLISH: Always return party names and item descriptions in English.
+2. UNROLLING: Return ONE item object per serial number. Do not return ranges.
+3. HANDWRITTEN CODES: Look for ink text (like SHKR). These can be anywhere.
+4. Return ONLY valid JSON.`;
 
   try {
     const response = await fetch(
