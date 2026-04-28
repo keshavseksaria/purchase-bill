@@ -185,7 +185,10 @@ function UploadPage({ addToast, onDone }) {
         const formData = new FormData();
         formData.append('file', file);
         const res = await fetch('/api/entries', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error(`Bill ${i + 1} upload failed`);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || `Bill ${i + 1} upload failed`);
+        }
         return res.json();
       });
 
@@ -376,6 +379,11 @@ function EntriesPage({ addToast, onSelect }) {
                        <span className="spinner spinner-sm" />
                     )}
                   </div>
+                  {entry.error_message && (
+                    <div style={{ marginTop: 10, padding: 8, background: 'var(--status-failed-bg)', color: 'var(--status-failed)', borderRadius: 4, fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>
+                      <strong>Error:</strong> {entry.error_message}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

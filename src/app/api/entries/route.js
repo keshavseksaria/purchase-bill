@@ -124,6 +124,10 @@ export async function POST(request) {
     return NextResponse.json({ entry });
   } catch (err) {
     console.error('POST /api/entries error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    // Return the specific error message to help debugging
+    return NextResponse.json({ 
+      error: err.message || 'Unknown upload error',
+      details: err
+    }, { status: 500 });
   }
 }
