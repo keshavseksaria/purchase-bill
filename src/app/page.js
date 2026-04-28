@@ -655,6 +655,35 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     }
   };
 
+  const handleSplit = (idx) => {
+    const item = items[idx];
+    const input = prompt(`Split "${item.name_of_item || 'Item'}" into multiple pieces.\nEnter quantities comma-separated (e.g. 10, 12.5, 7.5, 10):`, item.actual_qty);
+    
+    if (!input) return;
+    
+    const qtys = input.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+    if (qtys.length < 1) return;
+    
+    setItems(prev => {
+      const next = [...prev];
+      const parent = next[idx];
+      
+      const newItems = qtys.map((qty, i) => ({
+        ...parent,
+        id: crypto.randomUUID(),
+        actual_qty: qty,
+        billed_qty: qty,
+        amount: qty * (parent.rate || 0),
+      }));
+      
+      next.splice(idx, 1, ...newItems);
+      // Re-sort and update taxes
+      const updated = next.map((it, i) => ({ ...it, sort_order: i }));
+      setEntry(e => recalculateTaxes(updated, e));
+      return updated;
+    });
+  };
+
   const deleteEntry = async () => {
     if (!confirm('Delete this entry permanently?')) return;
     try {
@@ -905,8 +934,24 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                       <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                         ₹{Number(item.amount || 0).toLocaleString('en-IN')}
                       </td>
-                      <td>
-                        <button className="item-row-remove" onClick={() => removeItem(idx)}>✕</button>
+                      <td style={{ textAlign: 'right', paddingRight: 8 }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                          <button 
+                            className="btn-icon" 
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+                            onClick={() => handleSplit(idx)}
+                            title="Split item"
+                          >
+                            ✂️
+                          </button>
+                          <button 
+                            className="item-row-remove" 
+                            onClick={() => removeItem(idx)}
+                            title="Remove item"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
