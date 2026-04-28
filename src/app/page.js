@@ -364,18 +364,33 @@ function EntriesPage({ addToast, onSelect }) {
                   </div>
                   
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                    <span className={`status-badge status-${entry.status}`}>
-                      {entry.status === 'pending' && !entry.party_name ? '⏳ processing' : (
-                        <>
-                          {entry.status === 'pending' && '⏳'}
-                          {entry.status === 'approved' && '✓'}
-                          {entry.status === 'synced' && '✅'}
-                          {entry.status === 'failed' && '❌'}
-                          {' '}{entry.status}
-                        </>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span className={`status-badge status-${entry.status}`}>
+                        {entry.status === 'pending' && (!entry.party_name || entry.party_name === 'Processing...') ? '⏳ processing' : (
+                          <>
+                            {entry.status === 'pending' && '⏳'}
+                            {entry.status === 'approved' && '✓'}
+                            {entry.status === 'synced' && '✅'}
+                            {entry.status === 'failed' && '❌'}
+                            {' '}{entry.status}
+                          </>
+                        )}
+                      </span>
+                      {(entry.status === 'failed' || (entry.status === 'pending' && entry.party_name === 'Processing...')) && (
+                        <button 
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '2px 8px', fontSize: '0.65rem' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetch(`/api/entries/${entry.id}/process`, { method: 'POST' });
+                            addToast('Retrying processing...', 'info');
+                          }}
+                        >
+                          🔄 Retry
+                        </button>
                       )}
-                    </span>
-                    {entry.status === 'pending' && !entry.party_name && (
+                    </div>
+                    {entry.status === 'pending' && (!entry.party_name || entry.party_name === 'Processing...') && (
                        <span className="spinner spinner-sm" />
                     )}
                   </div>
