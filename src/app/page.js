@@ -657,11 +657,27 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
 
   const handleSplit = (idx) => {
     const item = items[idx];
-    const input = prompt(`Split "${item.name_of_item || 'Item'}" into multiple pieces.\nEnter quantities comma-separated (e.g. 10, 12.5, 7.5, 10):`, item.actual_qty);
+    const input = prompt(
+      `Split "${item.name_of_item || 'Item'}" into multiple pieces.\n` +
+      `Enter quantities comma-separated (e.g. 10, 12.5, 7.5) \n` +
+      `OR use shorthand for equal parts (e.g. 10x10 for 10 pieces of 10 each):`, 
+      item.actual_qty
+    );
     
     if (!input) return;
     
-    const qtys = input.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+    let qtys = [];
+    if (input.toLowerCase().includes('x')) {
+      const [countStr, qtyStr] = input.toLowerCase().split('x');
+      const count = parseInt(countStr.trim());
+      const qty = parseFloat(qtyStr.trim());
+      if (!isNaN(count) && !isNaN(qty)) {
+        qtys = Array(count).fill(qty);
+      }
+    } else {
+      qtys = input.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+    }
+
     if (qtys.length < 1) return;
     
     setItems(prev => {
@@ -677,7 +693,6 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       }));
       
       next.splice(idx, 1, ...newItems);
-      // Re-sort and update taxes
       const updated = next.map((it, i) => ({ ...it, sort_order: i }));
       setEntry(e => recalculateTaxes(updated, e));
       return updated;
