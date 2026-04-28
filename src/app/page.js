@@ -420,6 +420,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
   const [saving, setSaving] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(false);
   const [masterDiscount, setMasterDiscount] = useState('');
+  const [selectedIndices, setSelectedIndices] = useState([]);
 
   useEffect(() => {
     const load = async () => {
@@ -530,6 +531,68 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       setEntry(e => recalculateTaxes(next, e));
       return next;
     });
+  };
+
+  const handleBulkItemName = (itemName) => {
+    if (!itemName) return;
+    setItems(prev => {
+      const next = [...prev];
+      const targetIndices = selectedIndices.length > 0 
+        ? selectedIndices 
+        : Array.from({ length: prev.length }, (_, i) => i);
+        
+      targetIndices.forEach(idx => {
+        next[idx].name_of_item = itemName;
+      });
+      return next;
+    });
+    addToast(`Updated ${selectedIndices.length > 0 ? selectedIndices.length : 'all'} items`, 'success');
+  };
+
+  const handleBulkBatchSequence = () => {
+    if (selectedIndices.length < 2) {
+      addToast('Select at least 2 items to fix sequence', 'info');
+      return;
+    }
+    
+    setItems(prev => {
+      const next = [...prev];
+      const sorted = [...selectedIndices].sort((a, b) => a - b);
+      const firstIdx = sorted[0];
+      const baseBatch = next[firstIdx].batch_no;
+      
+      if (!baseBatch || baseBatch.length !== 8) {
+        addToast('First selected batch must be 8 digits (MMSSYYDD)', 'error');
+        return prev;
+      }
+      
+      const mm = baseBatch.slice(0, 2);
+      const initialSS = parseInt(baseBatch.slice(2, 4));
+      const yy = baseBatch.slice(4, 6);
+      const dd = baseBatch.slice(6, 8);
+      
+      sorted.forEach((idx, i) => {
+        const ss = String(initialSS + i).padStart(2, '0');
+        next[idx].batch_no = `${mm}${ss}${yy}${dd}`;
+      });
+      
+      return next;
+    });
+    addToast('Batch sequence updated!', 'success');
+  };
+
+  const toggleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedIndices(items.map((_, i) => i));
+    } else {
+      setSelectedIndices([]);
+    }
+  };
+
+  const toggleSelect = (idx) => {
+    setSelectedIndices(prev => 
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    );
   };
 
   const addItem = () => {
@@ -709,22 +772,50 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
 
           {/* Items */}
           <div className="form-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
               <div className="form-section-title" style={{ marginBottom: 0 }}>Items ({items.length})</div>
-              <div className="form-group" style={{ marginBottom: 0, width: 150 }}>
-                <input
-                  className="form-input"
-                  placeholder="Master Disc %"
-                  type="number"
-                  value={masterDiscount}
-                  onChange={e => handleMasterDiscountChange(e.target.value)}
-                />
+              
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                {selectedIndices.length > 0 && (
+                  <button className="btn btn-primary btn-sm" onClick={handleBulkBatchSequence}>
+                    🔢 Fix Batch Sequence ({selectedIndices.length})
+                  </button>
+                )}
+                
+                <select 
+                  className="form-input" 
+                  style={{ width: 200, fontSize: '0.8rem' }}
+                  onChange={e => handleBulkItemName(e.target.value)}
+                  value=""
+                >
+                  <option value="">Set {selectedIndices.length > 0 ? 'Selected' : 'All'} Item Name</option>
+                  {masterData.stockItems.map(si => (
+                    <option key={si.name} value={si.name}>{si.name}</option>
+                  ))}
+                </select>
+
+                <div className="form-group" style={{ marginBottom: 0, width: 100 }}>
+                  <input
+                    className="form-input"
+                    placeholder="Disc %"
+                    type="number"
+                    value={masterDiscount}
+                    onChange={e => handleMasterDiscountChange(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
             <div className="items-table-wrap">
               <table className="items-table">
                 <thead>
                   <tr>
+                    <th style={{ width: 30 }}>
+                      <input 
+                        type="checkbox" 
+                        onChange={e => toggleSelectAll(e.target.checked)}
+                        checked={selectedIndices.length === items.length && items.length > 0}
+                      />
+                    </th>
                     <th style={{ width: 30 }}>#</th>
                     <th className="item-name-cell">Item Name</th>
                     <th>Batch</th>
@@ -737,7 +828,14 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                 </thead>
                 <tbody>
                   {items.map((item, idx) => (
-                    <tr key={item.id || idx}>
+                    <tr key={item.id || idx} className={selectedIndices.includes(idx) ? 'selected-row' : ''}>
+                      <td>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedIndices.includes(idx)}
+                          onChange={() => toggleSelect(idx)}
+                        />
+                      </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{idx + 1}</td>
                       <td className="item-name-cell">
                         {masterData.stockItems.length > 0 ? (

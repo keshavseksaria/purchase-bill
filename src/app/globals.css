@@ -614,6 +614,10 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+.selected-row {
+  background: rgba(99, 102, 241, 0.1) !important;
+}
+
 .form-label {
   font-size: 0.75rem;
   font-weight: 500;
