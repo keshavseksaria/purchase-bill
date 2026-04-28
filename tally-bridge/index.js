@@ -53,6 +53,14 @@ function addLog(type, message) {
   console.log(`  ${icons[type] || '•'} ${message}`);
 }
 
+function safeParseFloat(val) {
+  if (!val) return 0;
+  // Clean string: remove extra minus signs (e.g., --0.08 -> -0.08)
+  const clean = val.toString().replace(/--/g, '-').trim();
+  const parsed = parseFloat(clean);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 // ─── XML Auto-Fixer ───
 
 function patchTallyXml(xml) {
@@ -77,10 +85,10 @@ function patchTallyXml(xml) {
   // 2. Auto-Balance Math
   let sum = 0;
   const invMatches = fixedXml.matchAll(/<ACCOUNTINGALLOCATIONS\.LIST>[\s\S]*?<AMOUNT>(.*?)<\/AMOUNT>[\s\S]*?<\/ACCOUNTINGALLOCATIONS\.LIST>/g);
-  for (const m of invMatches) sum += parseFloat(m[1]);
+  for (const m of invMatches) sum += safeParseFloat(m[1]);
 
   const ledMatches = fixedXml.matchAll(/<LEDGERENTRIES\.LIST>[\s\S]*?<ISPARTYLEDGER>No<\/ISPARTYLEDGER>[\s\S]*?<AMOUNT>(.*?)<\/AMOUNT>[\s\S]*?<\/LEDGERENTRIES\.LIST>/g);
-  for (const m of ledMatches) sum += parseFloat(m[1]);
+  for (const m of ledMatches) sum += safeParseFloat(m[1]);
 
   const requiredPartyAmount = (-sum).toFixed(2);
 

@@ -47,7 +47,7 @@ export function generateTallyXML(entry, items) {
        <ISSCRAP>No</ISSCRAP>
        <RATE>${rate.toFixed(2)}/${unit}</RATE>
        <DISCOUNT> ${discount.toFixed(2)}</DISCOUNT>
-       <AMOUNT>-${amount.toFixed(2)}</AMOUNT>
+       <AMOUNT>${(-amount).toFixed(2)}</AMOUNT>
        <ACTUALQTY> ${qty.toFixed(2)} ${unit}</ACTUALQTY>
        <BILLEDQTY> ${billedQty.toFixed(2)} ${unit}</BILLEDQTY>
        <BATCHALLOCATIONS.LIST>
@@ -58,7 +58,7 @@ export function generateTallyXML(entry, items) {
         <ORDERNO>&#4; Not Applicable</ORDERNO>
         <TRACKINGNUMBER>&#4; Not Applicable</TRACKINGNUMBER>
         <DYNAMICCSTISCLEARED>No</DYNAMICCSTISCLEARED>
-        <AMOUNT>-${amount.toFixed(2)}</AMOUNT>
+        <AMOUNT>${(-amount).toFixed(2)}</AMOUNT>
         <ACTUALQTY> ${qty.toFixed(2)} ${unit}</ACTUALQTY>
         <BILLEDQTY> ${billedQty.toFixed(2)} ${unit}</BILLEDQTY>
        </BATCHALLOCATIONS.LIST>
@@ -69,7 +69,7 @@ export function generateTallyXML(entry, items) {
         <LEDGERNAME>Purchases</LEDGERNAME>
         <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
         <ISPARTYLEDGER>No</ISPARTYLEDGER>
-        <AMOUNT>-${amount.toFixed(2)}</AMOUNT>
+        <AMOUNT>${(-amount).toFixed(2)}</AMOUNT>
        </ACCOUNTINGALLOCATIONS.LIST>
       </ALLINVENTORYENTRIES.LIST>`;
   }
@@ -109,7 +109,7 @@ export function generateTallyXML(entry, items) {
        <ISLASTDEEMEDPOSITIVE>Yes</ISLASTDEEMEDPOSITIVE>
        <REMOVEZEROENTRIES>Yes</REMOVEZEROENTRIES>
        <ISPARTYLEDGER>No</ISPARTYLEDGER>
-       <AMOUNT>-${cgst.toFixed(2)}</AMOUNT>
+       <AMOUNT>${(-cgst).toFixed(2)}</AMOUNT>
       </LEDGERENTRIES.LIST>`;
   }
 
@@ -126,7 +126,7 @@ export function generateTallyXML(entry, items) {
        <ISLASTDEEMEDPOSITIVE>Yes</ISLASTDEEMEDPOSITIVE>
        <REMOVEZEROENTRIES>Yes</REMOVEZEROENTRIES>
        <ISPARTYLEDGER>No</ISPARTYLEDGER>
-       <AMOUNT>-${sgst.toFixed(2)}</AMOUNT>
+       <AMOUNT>${(-sgst).toFixed(2)}</AMOUNT>
       </LEDGERENTRIES.LIST>`;
   }
 
@@ -143,7 +143,7 @@ export function generateTallyXML(entry, items) {
        <ISLASTDEEMEDPOSITIVE>Yes</ISLASTDEEMEDPOSITIVE>
        <REMOVEZEROENTRIES>Yes</REMOVEZEROENTRIES>
        <ISPARTYLEDGER>No</ISPARTYLEDGER>
-       <AMOUNT>-${igst.toFixed(2)}</AMOUNT>
+       <AMOUNT>${(-igst).toFixed(2)}</AMOUNT>
       </LEDGERENTRIES.LIST>`;
   }
 
@@ -162,7 +162,7 @@ export function generateTallyXML(entry, items) {
        <ISLASTDEEMEDPOSITIVE>Yes</ISLASTDEEMEDPOSITIVE>
        <ISPARTYLEDGER>No</ISPARTYLEDGER>
        <ROUNDLIMIT> 1</ROUNDLIMIT>
-       <AMOUNT>-${roundOff.toFixed(2)}</AMOUNT>
+       <AMOUNT>${(-roundOff).toFixed(2)}</AMOUNT>
       </LEDGERENTRIES.LIST>`;
   }
 
