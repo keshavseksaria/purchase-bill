@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, waitUntil } from 'next/server';
 import { supabase, isDemoMode } from '@/lib/supabase';
 import { demoStore } from '@/lib/demo-store';
 import { extractBillData } from '@/lib/gemini';
@@ -108,18 +108,18 @@ export async function POST(request) {
 
     if (entryErr) throw entryErr;
 
-    // 3. Trigger background processing (Fire and forget or use waitUntil if available)
-    // We'll use a simple fetch to our own background route
+    // 3. Trigger background processing reliably
     const protocol = request.headers.get('x-forwarded-proto') || 'http';
     const host = request.headers.get('host');
     const baseUrl = `${protocol}://${host}`;
     
-    // Trigger background process - don't await!
-    fetch(`${baseUrl}/api/entries/${entryId}/process`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // In a real app, you'd add a secret token here
-    }).catch(err => console.error('Background trigger failed:', err));
+    // Use waitUntil to ensure the background process starts before the function ends
+    waitUntil(
+      fetch(`${baseUrl}/api/entries/${entryId}/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(err => console.error('Background trigger failed:', err))
+    );
 
     return NextResponse.json({ entry });
   } catch (err) {
