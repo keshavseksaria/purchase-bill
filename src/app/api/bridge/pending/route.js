@@ -4,6 +4,7 @@ import { demoStore } from '@/lib/demo-store';
 import { generateTallyXML } from '@/lib/tally-xml';
 
 // GET /api/bridge/pending — returns approved entries for Tally Bridge to sync
+// ATOMIC: Marks entries as 'syncing' at the moment of fetching to prevent duplicate sends
 export async function GET(request) {
   try {
     if (isDemoMode) {
@@ -16,14 +17,20 @@ export async function GET(request) {
       return NextResponse.json(result);
     }
 
+    // Step 1: Atomically claim approved entries by flipping them to 'syncing'
+    // Any concurrent calls will find no 'approved' entries and return empty
     const { data: entries, error } = await supabase
       .from('entries')
-      .select('*')
-      .eq('status', 'approved');  // Only 'approved', never 'syncing' (already in-flight)
-    if (error) throw error;
+      .update({ status: 'syncing' })
+      .eq('status', 'approved')   // Only claim entries that are still 'approved'
+      .select('*');               // Return the rows that were actually updated
 
+    if (error) throw error;
+    if (!entries || entries.length === 0) return NextResponse.json([]);
+
+    // Step 2: Fetch items and build XML for each claimed entry
     const result = [];
-    for (const entry of (entries || [])) {
+    for (const entry of entries) {
       const { data: items } = await supabase
         .from('entry_items')
         .select('*')

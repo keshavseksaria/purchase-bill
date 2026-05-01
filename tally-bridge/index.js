@@ -340,15 +340,7 @@ async function processApprovedEntries() {
 
     for (const { entry, xml } of entries) {
       addLog('info', `Processing: ${entry.party_name} — ${entry.supplier_invoice_no} — ₹${entry.total}`);
-
-      // CRITICAL: Mark as 'syncing' FIRST before sending to Tally.
-      // This prevents the next poll from picking up this entry again
-      // if it completes slowly or if two poll cycles overlap.
-      await fetch(`${CLOUD_URL}/api/bridge/pending`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: entry.id, status: 'syncing' }),
-      });
+      // Note: entry is already marked 'syncing' by the server at fetch time (atomic)
 
       try {
         const result = await sendToTally(xml);
