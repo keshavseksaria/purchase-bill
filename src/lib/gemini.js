@@ -102,7 +102,8 @@ ITEM CODE RULES:
   Example: Item1 has "SHKR" written → Item2 has nothing → Item3 has nothing → Item4 has "SHSI" → Items 1,2,3 are SHKR; Item4 is SHSI.
 
 BATCH NUMBER RULES:
-- Look for an 8-digit handwritten number somewhere on the bill (e.g. "08012511"). Format is MMSSYYDD (MM=month, SS=serial, YY=year, DD=date).
+- Look for an 8-digit handwritten number somewhere on the bill (e.g. "08012511"). Format is MMSSYYDD (MM=month, SS=serial, YY=year last 2 digits, DD=date).
+- YY is the last 2 digits of the year. Since this is a recent bill, YY will be 25, 26, 27, or 28 (i.e., year 2025-2028). Never read YY as something like 19, 20, 21, 22, 23, 24.
 - Look for individual serial numbers (usually 2-digit) written next to each item (01, 02, 03...).
 - For each item, generate its full 8-digit batch_no by taking the template and replacing the SS (digits 3-4) with that item's serial number.
   Example: template "08012511", item serial 03 → batch_no "08032511".
@@ -175,7 +176,7 @@ IMPORTANT:
           }],
           generationConfig: {
             temperature: 0.1,
-            maxOutputTokens: 65535,
+            maxOutputTokens: 8192,
             response_mime_type: "application/json",
           },
           safetySettings: [
@@ -213,9 +214,10 @@ IMPORTANT:
       // 2. Process each item (batch_no comes directly from LLM, no overwriting)
       if (data.items && Array.isArray(data.items)) {
         data.items = data.items.map(item => {
-          // Fuzzy match handwritten code → stock item
-          const rawCode = item.handwritten_code || null;
-          const mappedName = findBestMatch(rawCode, masterData.stockItems);
+          // Only fuzzy-match if handwritten_code is a non-empty string.
+          // NEVER run fuzzy match on null/empty — it returns garbage matches.
+          const rawCode = (item.handwritten_code && item.handwritten_code.trim()) ? item.handwritten_code.trim() : null;
+          const mappedName = rawCode ? findBestMatch(rawCode, masterData.stockItems) : null;
 
           const qty = parseFloat(item.qty) || 0;
           const rate = parseFloat(item.rate) || 0;
@@ -225,6 +227,7 @@ IMPORTANT:
 
           return {
             bill_item_name: item.seller_item_name || '',
+            // name_of_item: fuzzy-matched Tally name, or the raw handwritten code, or '' if nothing found
             name_of_item: mappedName || rawCode || '',
             handwritten_name_raw: rawCode,
             batch_no: item.batch_no || '',

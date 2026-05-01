@@ -19,7 +19,7 @@ export async function GET(request) {
     const { data: entries, error } = await supabase
       .from('entries')
       .select('*')
-      .eq('status', 'approved');
+      .eq('status', 'approved');  // Only 'approved', never 'syncing' (already in-flight)
     if (error) throw error;
 
     const result = [];

@@ -294,19 +294,33 @@ function EntriesPage({ addToast, onSelect }) {
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
-  const fetchEntries = useCallback(async () => {
-    setLoading(true);
+  const fetchEntries = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const res = await fetch(`/api/entries?status=${filter}`);
       const data = await res.json();
       setEntries(Array.isArray(data) ? data : []);
     } catch (err) {
-      addToast('Failed to load entries', 'error');
+      if (!isSilent) addToast('Failed to load entries', 'error');
     }
-    setLoading(false);
+    if (!isSilent) setLoading(false);
   }, [filter, addToast]);
 
-  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+  useEffect(() => { 
+    fetchEntries(); 
+  }, [fetchEntries]);
+
+  // Automatic polling for 'Processing...' entries
+  useEffect(() => {
+    const isProcessing = entries.some(e => e.status === 'pending' && (!e.party_name || e.party_name === 'Processing...'));
+    if (!isProcessing) return;
+
+    const intervalId = setInterval(() => {
+      fetchEntries(true);
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [entries, fetchEntries]);
 
   const filters = [
     { key: 'all', label: 'All' },
