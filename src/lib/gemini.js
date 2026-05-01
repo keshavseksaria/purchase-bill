@@ -226,8 +226,9 @@ IMPORTANT:
           const computedAmount = disc > 0 ? subtotal - (subtotal * disc / 100) : subtotal;
 
           return {
-            bill_item_name: item.seller_item_name || '',
-            // name_of_item: fuzzy-matched Tally name, or the raw handwritten code, or '' if nothing found
+            // Store the raw handwritten code in bill_item_name for UI display
+            // (seller's printed item name is not needed — we never use it)
+            bill_item_name: rawCode || '',
             name_of_item: mappedName || rawCode || '',
             handwritten_name_raw: rawCode,
             batch_no: item.batch_no || '',

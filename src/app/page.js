@@ -923,7 +923,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                         )}
                         {item.bill_item_name && item.bill_item_name !== item.name_of_item && (
                           <div className="bill-name" title={item.bill_item_name}>
-                            Bill: {item.bill_item_name}
+                            Read: {item.bill_item_name}
                           </div>
                         )}
                       </td>
