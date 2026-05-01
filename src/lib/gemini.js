@@ -101,11 +101,14 @@ ITEM CODE RULES:
 - If items have DIFFERENT codes, the code is written next to the item where it changes. Items without a code next to them inherit the PREVIOUS item's code.
   Example: Item1 has "SHKR" written → Item2 has nothing → Item3 has nothing → Item4 has "SHSI" → Items 1,2,3 are SHKR; Item4 is SHSI.
 
-BATCH NUMBER / SERIAL RULES:
-- Look for an 8-digit handwritten number like "08012511" — this is the TEMPLATE batch number.
+BATCH NUMBER RULES:
+- Look for an 8-digit handwritten number somewhere on the bill (e.g. "08012511"). Format is MMSSYYDD (MM=month, SS=serial, YY=year, DD=date).
 - Look for individual serial numbers (usually 2-digit) written next to each item (01, 02, 03...).
+- For each item, generate its full 8-digit batch_no by taking the template and replacing the SS (digits 3-4) with that item's serial number.
+  Example: template "08012511", item serial 03 → batch_no "08032511".
 - Serials are almost always sequential. If you read 01, 02, 04 — the 04 is probably 03 misread.
 - Serials may reset between different item codes: SHKR 01,02,03 then SHSI 01,02.
+- If no template is found, return an empty string for batch_no.
 
 UNROLLING RULES:
 - If a single line says "5 Pcs" or "Qty: 5" with serial range "01-05", create 5 separate item objects.
@@ -129,12 +132,11 @@ Return ONLY a valid JSON object with this exact structure:
   "supplier_invoice_no": "invoice number string",
   "supplier_invoice_date": "YYYY-MM-DD",
   "party_name_raw": "Seller/Supplier name in English",
-  "batch_template": "the 8-digit handwritten batch number template if found, e.g. 08012511",
   "items": [
     {
       "seller_item_name": "printed item description from the bill (translate Hindi to English)",
       "handwritten_code": "the handwritten item code (e.g. SHKR). Single word, no spaces. null if not found.",
-      "serial": "2-digit serial number for this piece (e.g. '01'). null if not found.",
+      "batch_no": "full 8-digit batch number for this item (template with serial substituted). Empty string if not determinable.",
       "qty": number,
       "rate": number,
       "discount": number or 0,
@@ -208,39 +210,13 @@ IMPORTANT:
       // 1. Party name: fuzzy match against ledgers
       data.party_name = findBestMatch(data.party_name_raw, masterData.ledgers);
 
-      // 2. Extract batch template parts (MMSSYYDD)
-      const template = data.batch_template || '';
-      let tmplMM = '', tmplYY = '', tmplDD = '';
-      
-      if (template.length === 8) {
-        tmplMM = template.slice(0, 2);
-        // skip SS (2,4)
-        tmplYY = template.slice(4, 6);
-        tmplDD = template.slice(6, 8);
-      } else {
-        // Fallback: derive from bill date
-        const billDate = data.date || data.supplier_invoice_date || '';
-        const dateParts = billDate.split('-');
-        tmplYY = dateParts[0] ? dateParts[0].slice(-2) : '25';
-        tmplMM = dateParts[1] ? dateParts[1].padStart(2, '0') : '01';
-        tmplDD = dateParts[2] ? dateParts[2].padStart(2, '0') : '01';
-      }
-
-      // 3. Process each item
+      // 2. Process each item (batch_no comes directly from LLM, no overwriting)
       if (data.items && Array.isArray(data.items)) {
         data.items = data.items.map(item => {
           // Fuzzy match handwritten code → stock item
           const rawCode = item.handwritten_code || null;
           const mappedName = findBestMatch(rawCode, masterData.stockItems);
 
-          // Generate batch number: MMSSYYDD
-          let batch_no = '';
-          if (item.serial && tmplMM) {
-            const ss = String(item.serial).padStart(2, '0');
-            batch_no = `${tmplMM}${ss}${tmplYY}${tmplDD}`;
-          }
-
-          // Compute amount if discount is present but amount seems off
           const qty = parseFloat(item.qty) || 0;
           const rate = parseFloat(item.rate) || 0;
           const disc = parseFloat(item.discount) || 0;
@@ -251,8 +227,7 @@ IMPORTANT:
             bill_item_name: item.seller_item_name || '',
             name_of_item: mappedName || rawCode || '',
             handwritten_name_raw: rawCode,
-            batch_no: batch_no,
-            serial: item.serial || null,
+            batch_no: item.batch_no || '',
             actual_qty: qty,
             billed_qty: qty,
             rate: rate,
