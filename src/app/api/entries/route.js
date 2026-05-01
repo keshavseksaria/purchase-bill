@@ -1,9 +1,8 @@
-import { NextResponse, waitUntil } from 'next/server';
+import { NextResponse } from 'next/server';
 import { supabase, isDemoMode } from '@/lib/supabase';
 import { demoStore } from '@/lib/demo-store';
-import { processBill } from '@/lib/processor';
 
-export const maxDuration = 60; 
+export const maxDuration = 60;
 
 // GET /api/entries?status=pending
 export async function GET(request) {
@@ -21,17 +20,17 @@ export async function GET(request) {
       .order('created_at', { ascending: false });
 
     if (status && status !== 'all') query = query.eq('status', status);
-    
+
     const { data, error } = await query;
     if (error) throw error;
-    
+
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// POST /api/entries — upload a new bill
+// POST /api/entries — upload a new bill (upload only, processing triggered by client)
 export async function POST(request) {
   try {
     const formData = await request.formData();
@@ -48,7 +47,7 @@ export async function POST(request) {
     const entryId = crypto.randomUUID();
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    
+
     // 1. Upload to Supabase Storage
     const fileName = `${entryId}-${file.name}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -82,14 +81,11 @@ export async function POST(request) {
 
     if (entryErr) throw entryErr;
 
-    // 3. Trigger background processing reliably
-    // We call the processor DIRECTLY inside waitUntil
-    waitUntil(processBill(entryId).catch(err => console.error('Background process failed:', err)));
-
+    // Processing is triggered by the client via POST /api/entries/[id]/process
     return NextResponse.json({ entry });
   } catch (err) {
     console.error('POST /api/entries error:', err);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: err.message || 'Unknown upload error',
       details: err
     }, { status: 500 });

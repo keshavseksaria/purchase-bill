@@ -179,7 +179,7 @@ function UploadPage({ addToast, onDone }) {
 
     try {
       addToast(`Uploading ${files.length} bill${files.length > 1 ? 's' : ''}...`, 'info');
-      
+
       // Upload all files in parallel (fast)
       const uploadPromises = files.map(async (file, i) => {
         const formData = new FormData();
@@ -192,10 +192,17 @@ function UploadPage({ addToast, onDone }) {
         return res.json();
       });
 
-      await Promise.all(uploadPromises);
-      addToast(`Bills uploaded! AI processing started in background.`, 'success');
+      const uploadedEntries = await Promise.all(uploadPromises);
       
-      // Navigate to entries list immediately so they don't have to wait
+      // Trigger AI processing for each bill from the client
+      uploadedEntries.forEach(data => {
+        if (data.entry && data.entry.id) {
+          fetch(`/api/entries/${data.entry.id}/process`, { method: 'POST' })
+            .catch(err => console.error('Process trigger failed:', err));
+        }
+      });
+
+      addToast(`Bills uploaded! AI processing started.`, 'success');
       onDone(null);
     } catch (err) {
       addToast(`Upload failed: ${err.message}`, 'error');
@@ -357,12 +364,12 @@ function EntriesPage({ addToast, onSelect }) {
                       {entry.total > 0 ? `₹${Number(entry.total).toLocaleString('en-IN')}` : '—'}
                     </div>
                   </div>
-                  
+
                   <div className="entry-meta" style={{ marginTop: 4 }}>
                     <span>{entry.date || '—'}</span>
                     <span>{entry.supplier_invoice_no || ''}</span>
                   </div>
-                  
+
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span className={`status-badge status-${entry.status}`}>
@@ -377,7 +384,7 @@ function EntriesPage({ addToast, onSelect }) {
                         )}
                       </span>
                       {(entry.status === 'failed' || (entry.status === 'pending' && entry.party_name === 'Processing...')) && (
-                        <button 
+                        <button
                           className="btn btn-secondary btn-sm"
                           style={{ padding: '2px 8px', fontSize: '0.65rem' }}
                           onClick={(e) => {
@@ -391,7 +398,7 @@ function EntriesPage({ addToast, onSelect }) {
                       )}
                     </div>
                     {entry.status === 'pending' && (!entry.party_name || entry.party_name === 'Processing...') && (
-                       <span className="spinner spinner-sm" />
+                      <span className="spinner spinner-sm" />
                     )}
                   </div>
                   {entry.error_message && (
@@ -432,11 +439,11 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
         ]);
         const entryData = await entryRes.json();
         const masterDataResp = await masterRes.json();
-        
+
         // Use recalculateTaxes to ensure the total is correct on first load
         const initialItems = entryData.items || [];
         const calculatedEntry = recalculateTaxes(initialItems, entryData.entry);
-        
+
         setEntry(calculatedEntry);
         setItems(initialItems);
         setMasterData(masterDataResp);
@@ -450,7 +457,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
 
   const recalculateTaxes = (currentItems, currentEntry) => {
     const itemsTotal = currentItems.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
-    
+
     let cgst = parseFloat(currentEntry.cgst) || 0;
     let sgst = parseFloat(currentEntry.sgst) || 0;
     let igst = parseFloat(currentEntry.igst) || 0;
@@ -462,11 +469,11 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       cgst = Number((itemsTotal * 0.025).toFixed(2));
       sgst = Number((itemsTotal * 0.025).toFixed(2));
     }
-    
+
     const subtotal = itemsTotal + cgst + sgst + igst;
     const rounded = Math.round(subtotal);
     const roundOff = Number((rounded - subtotal).toFixed(2));
-    
+
     return {
       ...currentEntry,
       cgst,
@@ -483,7 +490,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       // If manually changing tax or roundoff, we need to update the total
       if (field === 'cgst' || field === 'sgst' || field === 'igst' || field === 'round_off') {
         const itemsTotal = items.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
-        const subtotal = itemsTotal + 
+        const subtotal = itemsTotal +
           (parseFloat(field === 'cgst' ? value : next.cgst) || 0) +
           (parseFloat(field === 'sgst' ? value : next.sgst) || 0) +
           (parseFloat(field === 'igst' ? value : next.igst) || 0);
@@ -498,7 +505,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     setItems(prev => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
-      
+
       // Auto-calculate amount when qty, rate, or discount changes
       if (field === 'actual_qty' || field === 'rate' || field === 'discount') {
         const qty = parseFloat(next[idx].actual_qty) || 0;
@@ -507,7 +514,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
         const subtotal = qty * rate;
         next[idx].amount = subtotal - (subtotal * (discountPercent / 100));
       }
-      
+
       setEntry(e => recalculateTaxes(next, e));
       return next;
     });
@@ -537,10 +544,10 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     if (!itemName) return;
     setItems(prev => {
       const next = [...prev];
-      const targetIndices = selectedIndices.length > 0 
-        ? selectedIndices 
+      const targetIndices = selectedIndices.length > 0
+        ? selectedIndices
         : Array.from({ length: prev.length }, (_, i) => i);
-        
+
       targetIndices.forEach(idx => {
         next[idx].name_of_item = itemName;
       });
@@ -554,28 +561,28 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       addToast('Select at least 2 items to fix sequence', 'info');
       return;
     }
-    
+
     setItems(prev => {
       const next = [...prev];
       const sorted = [...selectedIndices].sort((a, b) => a - b);
       const firstIdx = sorted[0];
       const baseBatch = next[firstIdx].batch_no;
-      
+
       if (!baseBatch || baseBatch.length !== 8) {
         addToast('First selected batch must be 8 digits (MMSSYYDD)', 'error');
         return prev;
       }
-      
+
       const mm = baseBatch.slice(0, 2);
       const initialSS = parseInt(baseBatch.slice(2, 4));
       const yy = baseBatch.slice(4, 6);
       const dd = baseBatch.slice(6, 8);
-      
+
       sorted.forEach((idx, i) => {
         const ss = String(initialSS + i).padStart(2, '0');
         next[idx].batch_no = `${mm}${ss}${yy}${dd}`;
       });
-      
+
       return next;
     });
     addToast('Batch sequence updated!', 'success');
@@ -590,7 +597,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
   };
 
   const toggleSelect = (idx) => {
-    setSelectedIndices(prev => 
+    setSelectedIndices(prev =>
       prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
     );
   };
@@ -660,12 +667,12 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     const input = prompt(
       `Split "${item.name_of_item || 'Item'}" into multiple pieces.\n` +
       `Enter quantities comma-separated (e.g. 10, 12.5, 7.5) \n` +
-      `OR use shorthand for equal parts (e.g. 10x10 for 10 pieces of 10 each):`, 
+      `OR use shorthand for equal parts (e.g. 10x10 for 10 pieces of 10 each):`,
       item.actual_qty
     );
-    
+
     if (!input) return;
-    
+
     let qtys = [];
     if (input.toLowerCase().includes('x')) {
       const [countStr, qtyStr] = input.toLowerCase().split('x');
@@ -679,11 +686,11 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     }
 
     if (qtys.length < 1) return;
-    
+
     setItems(prev => {
       const next = [...prev];
       const parent = next[idx];
-      
+
       const newItems = qtys.map((qty, i) => ({
         ...parent,
         id: crypto.randomUUID(),
@@ -691,7 +698,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
         billed_qty: qty,
         amount: qty * (parent.rate || 0),
       }));
-      
+
       next.splice(idx, 1, ...newItems);
       const updated = next.map((it, i) => ({ ...it, sort_order: i }));
       setEntry(e => recalculateTaxes(updated, e));
@@ -818,16 +825,16 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
           <div className="form-section">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
               <div className="form-section-title" style={{ marginBottom: 0 }}>Items ({items.length})</div>
-              
+
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 {selectedIndices.length > 0 && (
                   <button className="btn btn-primary btn-sm" onClick={handleBulkBatchSequence}>
                     🔢 Fix Batch Sequence ({selectedIndices.length})
                   </button>
                 )}
-                
-                <select 
-                  className="form-input" 
+
+                <select
+                  className="form-input"
                   style={{ width: 200, fontSize: '0.8rem' }}
                   onChange={e => handleBulkItemName(e.target.value)}
                   value=""
@@ -854,8 +861,8 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                 <thead>
                   <tr>
                     <th style={{ width: 30 }}>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         onChange={e => toggleSelectAll(e.target.checked)}
                         checked={selectedIndices.length === items.length && items.length > 0}
                       />
@@ -874,8 +881,8 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                   {items.map((item, idx) => (
                     <tr key={item.id || idx} className={selectedIndices.includes(idx) ? 'selected-row' : ''}>
                       <td>
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={selectedIndices.includes(idx)}
                           onChange={() => toggleSelect(idx)}
                         />
@@ -900,9 +907,9 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                             onChange={e => updateItem(idx, 'name_of_item', e.target.value)}
                           />
                         )}
-                        {item.handwritten_code && item.handwritten_code !== item.name_of_item && (
-                          <div className="bill-name" title={item.handwritten_code}>
-                            Raw Code: {item.handwritten_code}
+                        {item.bill_item_name && item.bill_item_name !== item.name_of_item && (
+                          <div className="bill-name" title={item.bill_item_name}>
+                            Bill: {item.bill_item_name}
                           </div>
                         )}
                       </td>
@@ -951,16 +958,16 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                       </td>
                       <td style={{ textAlign: 'right', paddingRight: 8 }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-                          <button 
-                            className="btn-icon" 
+                          <button
+                            className="btn-icon"
                             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
                             onClick={() => handleSplit(idx)}
                             title="Split item"
                           >
                             ✂️
                           </button>
-                          <button 
-                            className="item-row-remove" 
+                          <button
+                            className="item-row-remove"
                             onClick={() => removeItem(idx)}
                             title="Remove item"
                           >

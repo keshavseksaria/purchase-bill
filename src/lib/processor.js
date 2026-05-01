@@ -63,7 +63,7 @@ export async function processBill(entryId) {
       stockItems: stockItemsData || [],
     };
 
-    // 4. Run Gemini Extraction
+    // 4. Run Gemini Extraction (all post-processing happens inside gemini.js)
     let extracted;
     try {
       extracted = await extractBillData(base64, masterData, mimeType);
@@ -96,37 +96,22 @@ export async function processBill(entryId) {
     // 6. Clear old items (for retries)
     await supabase.from('entry_items').delete().eq('entry_id', entryId);
 
-    // 7. Insert Items
+    // 7. Insert Items — batch_no is ALREADY computed by gemini.js, no duplicate logic here
     if (extracted.items && extracted.items.length > 0) {
-      const entryDate = extracted.date ? new Date(extracted.date) : new Date();
-      const mm = String(entryDate.getMonth() + 1).padStart(2, '0');
-      const yy = String(entryDate.getFullYear()).slice(-2);
-      const dd = String(entryDate.getDate()).padStart(2, '0');
-
-      const items = extracted.items.map((item, idx) => {
-        // Generate batch number: MM SS YY DD
-        let finalBatch = item.batch_no || '';
-        if (item.serial) {
-          const ss = String(item.serial).padStart(2, '0');
-          finalBatch = `${mm}${ss}${yy}${dd}`;
-        }
-
-        return {
-          id: crypto.randomUUID(),
-          entry_id: entryId,
-          bill_item_name: item.bill_item_name || '', 
-          name_of_item: item.name_of_item || item.handwritten_name_raw || '', 
-          batch_no: finalBatch, 
-          actual_qty: item.actual_qty || 0,
-          billed_qty: item.billed_qty || item.actual_qty || 0,
-          rate: item.rate || 0,
-          amount: item.amount || 0,
-          discount: 0,
-          unit: item.unit || 'No.',
-          sort_order: idx,
-          handwritten_code: item.handwritten_name_raw || null // Save for UI
-        };
-      });
+      const items = extracted.items.map((item, idx) => ({
+        id: crypto.randomUUID(),
+        entry_id: entryId,
+        bill_item_name: item.bill_item_name || '',
+        name_of_item: item.name_of_item || '',
+        batch_no: item.batch_no || '',
+        actual_qty: item.actual_qty || 0,
+        billed_qty: item.billed_qty || item.actual_qty || 0,
+        rate: item.rate || 0,
+        amount: item.amount || 0,
+        discount: item.discount || 0,
+        unit: item.unit || 'No.',
+        sort_order: idx,
+      }));
 
       await supabase.from('entry_items').insert(items);
     }
