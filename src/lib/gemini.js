@@ -156,55 +156,75 @@ IMPORTANT:
 - All number values must be plain numbers (no commas, no currency symbols).
 - If a field is not found, use null for strings and 0 for numbers.`;
 
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: EXTRACTION_PROMPT },
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: imageBase64,
-                },
-              },
-            ],
-          }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 8192,
-            response_mime_type: "application/json",
-          },
-          safetySettings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-          ],
-        }),
-      }
-    );
+  const MAX_RETRIES = 2;
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Gemini API error: ${response.status} — ${err}`);
-    }
-
-    const result = await response.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    if (!text) throw new Error('Gemini returned an empty response.');
-
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: EXTRACTION_PROMPT },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: imageBase64,
+                  },
+                },
+              ],
+            }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 16384,
+              response_mime_type: "application/json",
+            },
+            safetySettings: [
+              { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Gemini API error: ${response.status} — ${err}`);
+      }
+
+      const result = await response.json();
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      if (!text) throw new Error('Gemini returned an empty response.');
+
       let cleaned = text.trim();
       if (cleaned.startsWith('```')) {
         cleaned = cleaned.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
       }
-      const data = JSON.parse(cleaned);
+
+      // Try parsing, with auto-repair on failure
+      let data;
+      try {
+        data = JSON.parse(cleaned);
+      } catch (parseErr) {
+        // Attempt auto-repair of truncated JSON
+        data = tryRepairJSON(cleaned);
+        if (!data) {
+          // If repair failed and we have retries left, try again
+          if (attempt < MAX_RETRIES) {
+            console.warn(`[Gemini] JSON parse failed (attempt ${attempt + 1}), retrying...`);
+            continue;
+          }
+          console.error('JSON Parse Error. Raw Text:', cleaned.substring(0, 500));
+          throw new Error(`AI generated invalid JSON: ${parseErr.message}`);
+        }
+        console.warn('[Gemini] JSON was repaired from truncated response');
+      }
 
       // ─── POST-PROCESSING ───────────────────────────────────
 
@@ -255,13 +275,48 @@ IMPORTANT:
       }
 
       return data;
-    } catch (parseErr) {
-      console.error('JSON Parse Error. Raw Text:', text.substring(0, 500));
-      throw new Error(`AI generated invalid JSON: ${parseErr.message}`);
+    } catch (error) {
+      if (attempt < MAX_RETRIES) {
+        console.warn(`[Gemini] Attempt ${attempt + 1} failed: ${error.message}, retrying...`);
+        continue;
+      }
+      console.error('Gemini extraction failed:', error);
+      throw error;
     }
-  } catch (error) {
-    console.error('Gemini extraction failed:', error);
-    throw error;
+  }
+
+  // Should never reach here, but just in case
+  throw new Error('Gemini extraction failed after all retries');
+}
+
+// --- JSON Auto-Repair for truncated responses ---
+function tryRepairJSON(text) {
+  try {
+    // Common issue: truncated at end, missing closing brackets
+    let repaired = text;
+
+    // Close any unterminated strings
+    const quoteCount = (repaired.match(/"/g) || []).length;
+    if (quoteCount % 2 !== 0) {
+      repaired += '"';
+    }
+
+    // Count open/close brackets and braces
+    const openBraces = (repaired.match(/{/g) || []).length;
+    const closeBraces = (repaired.match(/}/g) || []).length;
+    const openBrackets = (repaired.match(/\[/g) || []).length;
+    const closeBrackets = (repaired.match(/]/g) || []).length;
+
+    // Remove trailing commas before we close
+    repaired = repaired.replace(/,\s*$/, '');
+
+    // Close arrays then objects
+    for (let i = 0; i < openBrackets - closeBrackets; i++) repaired += ']';
+    for (let i = 0; i < openBraces - closeBraces; i++) repaired += '}';
+
+    return JSON.parse(repaired);
+  } catch {
+    return null;
   }
 }
 
