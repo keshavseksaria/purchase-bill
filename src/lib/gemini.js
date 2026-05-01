@@ -256,7 +256,7 @@ IMPORTANT:
             billed_qty: qty,
             rate: rate,
             discount: disc,
-            amount: item.amount || computedAmount,
+            amount: computedAmount,
             unit: 'No.',
           };
         });
