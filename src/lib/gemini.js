@@ -92,7 +92,7 @@ CONTEXT:
 - The SELLER / SUPPLIER name (usually printed at the very top of the bill) is what we need as "party_name_raw".
 - If the seller name is in Hindi, transliterate/translate it to English.
 - The buyer handwrites additional information on the bill AFTER receiving it:
-  a) An ITEM CODE — a short single-word code like SHKR, SUJE, BD, TO, SHSI (no spaces). 
+  a) An ITEM CODE — a short single-word code (no spaces). These vary per bill and could be ANYTHING (examples only: SHKR, SUJE, BD, TO, SHSI). Read the ACTUAL handwritten text on the bill — do NOT default to the examples.
   b) A SAMPLE BATCH NUMBER — an 8-digit number like 08012511 (format: MMSSYYDD where MM=month, SS=serial, YY=year, DD=date).
   c) Individual SERIAL NUMBERS — written in front of / next to each item line (e.g., 01, 02, 03...).
 
@@ -116,6 +116,9 @@ UNROLLING RULES:
 - If individual piece quantities (breakdown) are written (usually to the left/below), use those exact quantities.
 - If no breakdown is given, divide total quantity equally: e.g., 120 mtrs / 5 pcs = 24 each.
 
+RATE:
+- If the bill shows TWO prices per item (one inclusive of tax, one exclusive of tax), ALWAYS use the EXCLUDING TAX / PRE-TAX rate. GST is added separately at the end.
+
 DISCOUNT:
 - Look for any percentage discount mentioned for items. Return as a number (e.g., 10 for 10%).
 
@@ -136,7 +139,7 @@ Return ONLY a valid JSON object with this exact structure:
   "items": [
     {
       "seller_item_name": "printed item description from the bill (translate Hindi to English)",
-      "handwritten_code": "the handwritten item code (e.g. SHKR). Single word, no spaces. null if not found.",
+      "handwritten_code": "the handwritten item code. Single word, no spaces. Read EXACTLY what is written. null if not found.",
       "batch_no": "full 8-digit batch number for this item (template with serial substituted). Empty string if not determinable.",
       "qty": number,
       "rate": number,

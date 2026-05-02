@@ -616,8 +616,8 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     );
   };
 
-  const addItem = () => {
-    setItems(prev => [...prev, {
+  const addItem = (afterIdx) => {
+    const newItem = {
       id: crypto.randomUUID(),
       bill_item_name: '',
       name_of_item: '',
@@ -628,7 +628,16 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
       discount: 0,
       amount: 0,
       unit: 'No.',
-    }]);
+    };
+    setItems(prev => {
+      const next = [...prev];
+      if (typeof afterIdx === 'number') {
+        next.splice(afterIdx + 1, 0, newItem);
+      } else {
+        next.push(newItem);
+      }
+      return next.map((it, i) => ({ ...it, sort_order: i }));
+    });
   };
 
   const removeItem = (idx) => {
@@ -704,14 +713,31 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
     setItems(prev => {
       const next = [...prev];
       const parent = next[idx];
+      const baseBatch = parent.batch_no || '';
 
-      const newItems = qtys.map((qty, i) => ({
-        ...parent,
-        id: crypto.randomUUID(),
-        actual_qty: qty,
-        billed_qty: qty,
-        amount: qty * (parent.rate || 0),
-      }));
+      const newItems = qtys.map((qty, i) => {
+        // Generate sequential batch numbers if parent has a valid 8-digit batch
+        let batchNo = baseBatch;
+        if (baseBatch.length === 8 && i > 0) {
+          const mm = baseBatch.slice(0, 2);
+          const baseSS = parseInt(baseBatch.slice(2, 4));
+          const yy = baseBatch.slice(4, 6);
+          const dd = baseBatch.slice(6, 8);
+          const ss = String(baseSS + i).padStart(2, '0');
+          batchNo = `${mm}${ss}${yy}${dd}`;
+        }
+
+        const disc = parseFloat(parent.discount) || 0;
+        const subtotal = qty * (parent.rate || 0);
+        return {
+          ...parent,
+          id: crypto.randomUUID(),
+          actual_qty: qty,
+          billed_qty: qty,
+          batch_no: batchNo,
+          amount: disc > 0 ? subtotal - (subtotal * disc / 100) : subtotal,
+        };
+      });
 
       next.splice(idx, 1, ...newItems);
       const updated = next.map((it, i) => ({ ...it, sort_order: i }));
@@ -859,12 +885,44 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                   ))}
                 </select>
 
+                <input
+                  className="form-input"
+                  style={{ width: 80, fontSize: '0.8rem' }}
+                  type="number"
+                  placeholder="Rate"
+                  onWheel={e => e.target.blur()}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const val = parseFloat(e.target.value);
+                      if (isNaN(val)) return;
+                      const targets = selectedIndices.length > 0 
+                        ? selectedIndices 
+                        : Array.from({ length: items.length }, (_, i) => i);
+                      setItems(prev => {
+                        const next = [...prev];
+                        targets.forEach(i => {
+                          next[i].rate = val;
+                          const qty = parseFloat(next[i].actual_qty) || 0;
+                          const disc = parseFloat(next[i].discount) || 0;
+                          const sub = qty * val;
+                          next[i].amount = disc > 0 ? sub - (sub * disc / 100) : sub;
+                        });
+                        setEntry(en => recalculateTaxes(next, en));
+                        return next;
+                      });
+                      e.target.value = '';
+                      addToast(`Rate set for ${targets.length} items`, 'success');
+                    }
+                  }}
+                />
+
                 <div className="form-group" style={{ marginBottom: 0, width: 100 }}>
                   <input
                     className="form-input"
                     placeholder="Disc %"
                     type="number"
                     value={masterDiscount}
+                    onWheel={e => e.target.blur()}
                     onChange={e => handleMasterDiscountChange(e.target.value)}
                   />
                 </div>
@@ -940,6 +998,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                           className="form-input"
                           type="number"
                           value={item.actual_qty || ''}
+                          onWheel={e => e.target.blur()}
                           onChange={e => {
                             updateItem(idx, 'actual_qty', e.target.value);
                             updateItem(idx, 'billed_qty', e.target.value);
@@ -953,6 +1012,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                           type="number"
                           step="0.01"
                           value={item.rate || ''}
+                          onWheel={e => e.target.blur()}
                           onChange={e => updateItem(idx, 'rate', e.target.value)}
                           style={{ width: 80 }}
                         />
@@ -963,6 +1023,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                           type="number"
                           step="0.01"
                           value={item.discount || ''}
+                          onWheel={e => e.target.blur()}
                           onChange={e => updateItem(idx, 'discount', e.target.value)}
                           style={{ width: 70 }}
                         />
@@ -981,6 +1042,14 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                             ✂️
                           </button>
                           <button
+                            className="btn-icon"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}
+                            onClick={() => addItem(idx)}
+                            title="Insert item below"
+                          >
+                            ➕
+                          </button>
+                          <button
                             className="item-row-remove"
                             onClick={() => removeItem(idx)}
                             title="Remove item"
@@ -994,7 +1063,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                 </tbody>
               </table>
             </div>
-            <button className="add-item-btn" onClick={addItem}>+ Add Item</button>
+            <button className="add-item-btn" onClick={() => addItem()}>+ Add Item</button>
           </div>
 
           {/* Totals */}
@@ -1008,6 +1077,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                   type="number"
                   step="0.01"
                   value={entry.cgst || ''}
+                  onWheel={e => e.target.blur()}
                   onChange={e => updateField('cgst', e.target.value)}
                 />
               </div>
@@ -1018,6 +1088,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                   type="number"
                   step="0.01"
                   value={entry.sgst || ''}
+                  onWheel={e => e.target.blur()}
                   onChange={e => updateField('sgst', e.target.value)}
                 />
               </div>
@@ -1028,6 +1099,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                   type="number"
                   step="0.01"
                   value={entry.igst || ''}
+                  onWheel={e => e.target.blur()}
                   onChange={e => updateField('igst', e.target.value)}
                 />
               </div>
@@ -1038,6 +1110,7 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                   type="number"
                   step="0.01"
                   value={entry.round_off || ''}
+                  onWheel={e => e.target.blur()}
                   onChange={e => updateField('round_off', e.target.value)}
                 />
               </div>
