@@ -889,6 +889,38 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
                   className="form-input"
                   style={{ width: 80, fontSize: '0.8rem' }}
                   type="number"
+                  placeholder="Qty"
+                  onWheel={e => e.target.blur()}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const val = parseFloat(e.target.value);
+                      if (isNaN(val)) return;
+                      const targets = selectedIndices.length > 0 
+                        ? selectedIndices 
+                        : Array.from({ length: items.length }, (_, i) => i);
+                      setItems(prev => {
+                        const next = [...prev];
+                        targets.forEach(i => {
+                          next[i].actual_qty = val;
+                          next[i].billed_qty = val;
+                          const rate = parseFloat(next[i].rate) || 0;
+                          const disc = parseFloat(next[i].discount) || 0;
+                          const sub = val * rate;
+                          next[i].amount = disc > 0 ? sub - (sub * disc / 100) : sub;
+                        });
+                        setEntry(en => recalculateTaxes(next, en));
+                        return next;
+                      });
+                      e.target.value = '';
+                      addToast(`Qty set for ${targets.length} items`, 'success');
+                    }
+                  }}
+                />
+
+                <input
+                  className="form-input"
+                  style={{ width: 80, fontSize: '0.8rem' }}
+                  type="number"
                   placeholder="Rate"
                   onWheel={e => e.target.blur()}
                   onKeyDown={e => {
