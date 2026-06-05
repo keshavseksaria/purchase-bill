@@ -1173,6 +1173,23 @@ function EntryDetailPage({ entryId, addToast, onBack }) {
               ✅ Approve & Push to Tally
             </button>
           )}
+          {(entry.status === 'synced' || entry.status === 'approved') && (
+            <button className="btn btn-success" onClick={async () => {
+              const saved = await save(true);
+              if (!saved) return;
+              try {
+                const res = await fetch(`/api/entries/${entryId}/approve`, { method: 'POST' });
+                if (!res.ok) throw new Error('Re-push failed');
+                const data = await res.json();
+                setEntry(data.entry);
+                addToast('✅ Saved & re-pushed to Tally!', 'success');
+              } catch (err) {
+                addToast(`Re-push failed: ${err.message}`, 'error');
+              }
+            }}>
+              🔄 Save & Re-push to Tally
+            </button>
+          )}
         </div>
       </div>
 
