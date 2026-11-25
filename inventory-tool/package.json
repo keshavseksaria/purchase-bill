@@ -1,0 +1,13 @@
+{
+  "name": "inventory-tool",
+  "version": "1.0.0",
+  "description": "Extracts batch-wise stock inventory from Tally to Excel for physical stock reconciliation",
+  "main": "inventory-dump.js",
+  "scripts": {
+    "start": "node inventory-dump.js",
+    "shuttings": "node inventory-dump.js --group SHUTTING"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
+}

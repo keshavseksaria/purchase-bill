@@ -2,7 +2,7 @@
 /**
  * Inventory Dump — Extracts batch-wise stock inventory from Tally to Excel.
  *
- * Runs locally on the Windows machine alongside Tally.
+ * Standalone tool. Runs locally on the Windows machine alongside Tally.
  * Talks to Tally on localhost:9000, generates an Excel file for physical stock checking.
  *
  * Usage:
@@ -418,20 +418,20 @@ async function generateExcel(categorized, outputPath) {
   workbook.created = new Date();
 
   // Sheet 1: Active Stock (main checking list)
-  addStockSheet(workbook, '📋 Active Stock', categorized.active, {
+  addStockSheet(workbook, 'Active Stock', categorized.active, {
     includePhysical: true,
   });
 
   // Sheet 2: Negative Inventory
   if (categorized.negative.length > 0) {
-    addStockSheet(workbook, '⚠️ Negative', categorized.negative, {
+    addStockSheet(workbook, 'Negative', categorized.negative, {
       rowFill: NEGATIVE_FILL,
     });
   }
 
   // Sheet 3: Remnants
   if (categorized.remnants.length > 0) {
-    addStockSheet(workbook, '🔸 Remnants', categorized.remnants, {
+    addStockSheet(workbook, 'Remnants', categorized.remnants, {
       rowFill: REMNANT_FILL,
     });
   }
@@ -518,7 +518,7 @@ async function main() {
   console.log('');
   console.log('  Next steps:');
   console.log('    1. Open the Excel file');
-  console.log('    2. Go to "📋 Active Stock" sheet');
+  console.log('    2. Go to "Active Stock" sheet');
   console.log('    3. Fill in "Physical Qty" column while checking stock');
   console.log('    4. "Difference" column auto-calculates mismatches');
   console.log('');
